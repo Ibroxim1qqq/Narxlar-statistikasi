@@ -45,6 +45,24 @@ BAND_COLORS = {
     "Narx yo'q": "#71717a",
 }
 
+CITY_RENAMES = {
+    "Самарқанд вилояти": "Samarqand viloyati",
+    "Самаркандская область": "Samarqand viloyati",
+    "Кашкадарьинская область": "Qashqadaryo viloyati",
+    "Сурхандарьинская область": "Surxondaryo viloyati",
+    "Джизакская область": "Jizzax viloyati",
+    "Хорезмская область": "Xorazm viloyati",
+    "Республика Каракалпакстан": "Qoraqalpog'iston",
+}
+
+DISTRICT_RENAMES = {
+    "город Джизак": "Jizzax shahri",
+    "город Самарканд": "Samarqand shahri",
+    "город Карши": "Qarshi shahri",
+    "город Термез": "Termiz shahri",
+    "город Ургенч": "Urganch shahri",
+}
+
 
 st.set_page_config(page_title="O'zbekiston yangi uylar narxlari", layout="wide")
 
@@ -201,6 +219,10 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
         for col in df.columns:
             if col in NUMERIC_COLUMNS or col.endswith("_uzs") or col.endswith("_usd"):
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+        if "city" in df:
+            df["city"] = df["city"].replace(CITY_RENAMES)
+        if "district" in df:
+            df["district"] = df["district"].replace(DISTRICT_RENAMES)
 
     projects["has_price"] = projects[
         ["price_per_sqm_min_uzs", "price_total_min_uzs", "price_total_min_usd"]
@@ -364,6 +386,310 @@ def source_quality(df: pd.DataFrame) -> pd.DataFrame:
     )
     stats["price_coverage"] = stats["priced_projects"] / stats["projects"]
     return stats
+
+
+def filter_projects(
+    projects: pd.DataFrame,
+    *,
+    key: str,
+    source: bool = True,
+    city: bool = True,
+    district: bool = False,
+    segment: bool = False,
+    price_range: bool = False,
+    search: bool = False,
+    only_priced_default: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    controls = st.container()
+    with controls:
+        filter_cols = st.columns(4)
+        filtered = projects.copy()
+        scope = projects.copy()
+
+        with filter_cols[0]:
+            if source:
+                sources = sorted(projects["source"].dropna().unique())
+                selected_sources = st.multiselect("Manba", sources, default=sources, key=f"{key}_source")
+                filtered = filtered[filtered["source"].isin(selected_sources)]
+                scope = scope[scope["source"].isin(selected_sources)]
+
+        with filter_cols[1]:
+            if city:
+                city_options = sorted(filtered["city"].dropna().unique())
+                selected_cities = st.multiselect("Shahar/viloyat", city_options, key=f"{key}_city")
+                if selected_cities:
+                    filtered = filtered[filtered["city"].isin(selected_cities)]
+                    scope = scope[scope["city"].isin(selected_cities)]
+
+        with filter_cols[2]:
+            if district:
+                district_options = sorted(filtered["district"].dropna().unique())
+                selected_districts = st.multiselect("Tuman", district_options, key=f"{key}_district")
+                if selected_districts:
+                    filtered = filtered[filtered["district"].isin(selected_districts)]
+                    scope = scope[scope["district"].isin(selected_districts)]
+            elif segment:
+                selected_segments = st.multiselect(
+                    "Segment",
+                    [band for band in BAND_ORDER if band in set(filtered["price_band"].dropna())],
+                    key=f"{key}_segment",
+                )
+                if selected_segments:
+                    filtered = filtered[filtered["price_band"].isin(selected_segments)]
+                    scope = scope[scope["price_band"].isin(selected_segments)]
+
+        with filter_cols[3]:
+            only_priced = st.checkbox("Faqat narxi bor", value=only_priced_default, key=f"{key}_priced")
+
+        if price_range:
+            priced_values = filtered["price_per_sqm_min_uzs"].dropna()
+            if not priced_values.empty:
+                min_mln = int(max(0, priced_values.min() // 1_000_000))
+                max_mln = int(priced_values.max() // 1_000_000 + 1)
+                if max_mln > min_mln:
+                    selected_range = st.slider(
+                        "m2 narx diapazoni, mln so'm",
+                        min_value=min_mln,
+                        max_value=max_mln,
+                        value=(min_mln, max_mln),
+                        step=1,
+                        key=f"{key}_price_range",
+                    )
+                    lower, upper = selected_range[0] * 1_000_000, selected_range[1] * 1_000_000
+                    filtered = filtered[
+                        filtered["price_per_sqm_min_uzs"].between(lower, upper, inclusive="both")
+                    ]
+
+        if search:
+            query = st.text_input(
+                "Loyiha/developer/qidirish",
+                placeholder="Masalan: Nest, Yakkasaroy, Murad",
+                key=f"{key}_search",
+            )
+            if query:
+                searchable_cols = ["project_name", "developer", "city", "district", "address", "source"]
+                search_blob = filtered[searchable_cols].fillna("").astype(str).agg(" ".join, axis=1)
+                filtered = filtered[search_blob.str.contains(re.escape(query), case=False, na=False)]
+
+    if only_priced:
+        filtered = filtered[filtered["has_price"]]
+    return filtered, scope
+
+
+def matching_rooms(rooms: pd.DataFrame, projects: pd.DataFrame) -> pd.DataFrame:
+    if projects.empty:
+        return rooms.iloc[0:0].copy()
+    keys = set(zip(projects["source"], projects["source_id"].astype(str)))
+    room_keys = list(zip(rooms["source"], rooms["source_id"].astype(str)))
+    return rooms[[key in keys for key in room_keys]].copy()
+
+
+def filter_rooms(
+    rooms: pd.DataFrame,
+    projects: pd.DataFrame,
+    *,
+    key: str,
+) -> pd.DataFrame:
+    scoped_projects, _ = filter_projects(
+        projects,
+        key=f"{key}_project_scope",
+        source=True,
+        city=True,
+        district=True,
+        only_priced_default=True,
+    )
+    filtered = matching_rooms(rooms, scoped_projects)
+    room_values = sorted(int(x) for x in filtered["rooms"].dropna().unique() if 0 <= int(x) <= 8)
+    if room_values:
+        labels = [room_label(x) for x in room_values]
+        selected_labels = st.multiselect("Xona filteri", labels, key=f"{key}_rooms")
+        if selected_labels:
+            selected_rooms = {room_values[labels.index(label)] for label in selected_labels}
+            filtered = filtered[filtered["rooms"].isin(selected_rooms)]
+    return filtered
+
+
+def overview_cards(projects: pd.DataFrame, rooms: pd.DataFrame, quality_scope: pd.DataFrame) -> None:
+    cities = city_stats(projects)
+    districts = district_stats(projects, 2)
+    scope_total = len(quality_scope)
+    priced_count = int(quality_scope["has_price"].sum()) if not quality_scope.empty else 0
+    coverage = priced_count / scope_total if scope_total else float("nan")
+
+    avg_sqm = projects["price_per_sqm_min_uzs"].mean()
+    median_total = projects["price_total_min_uzs"].median()
+    room2 = rooms[rooms["rooms"].eq(2)]["min_total_price_uzs"].median()
+    top_city = cities.iloc[0] if not cities.empty else None
+    cheap_city = cities.sort_values("median_sqm_uzs").iloc[0] if not cities.empty else None
+    top_district = districts.iloc[0] if not districts.empty else None
+    cheap_district = districts.sort_values("median_sqm_uzs").iloc[0] if not districts.empty else None
+
+    first_row = st.columns(4)
+    with first_row[0]:
+        metric_card("Loyihalar", fmt_int(len(projects)), f"narx coverage {fmt_pct(coverage)}")
+    with first_row[1]:
+        metric_card("O'rtacha m2 narx", fmt_money(avg_sqm), "narxi bor loyihalar bo'yicha")
+    with first_row[2]:
+        metric_card("Median uy narxi", fmt_money(median_total), "min total price benchmark")
+    with first_row[3]:
+        metric_card("2 xona benchmark", fmt_money(room2), "eng likvid format")
+
+    second_row = st.columns(4)
+    with second_row[0]:
+        metric_card(
+            "Eng qimmat shahar",
+            top_city["city"] if top_city is not None else "n/a",
+            fmt_money(top_city["median_sqm_uzs"]) + "/m2" if top_city is not None else "",
+        )
+    with second_row[1]:
+        metric_card(
+            "Eng arzon shahar",
+            cheap_city["city"] if cheap_city is not None else "n/a",
+            fmt_money(cheap_city["median_sqm_uzs"]) + "/m2" if cheap_city is not None else "",
+        )
+    with second_row[2]:
+        metric_card(
+            "Premium tuman",
+            top_district["district"] if top_district is not None else "n/a",
+            fmt_money(top_district["median_sqm_uzs"]) + "/m2" if top_district is not None else "",
+        )
+    with second_row[3]:
+        metric_card(
+            "Value tuman",
+            cheap_district["district"] if cheap_district is not None else "n/a",
+            fmt_money(cheap_district["median_sqm_uzs"]) + "/m2" if cheap_district is not None else "",
+        )
+
+
+def city_bar(stats: pd.DataFrame, *, title: str, ascending: bool, height: int = 420) -> go.Figure:
+    chart = stats.sort_values("median_sqm_uzs", ascending=ascending).head(10)
+    chart = chart.sort_values("median_sqm_uzs")
+    fig = px.bar(
+        chart,
+        x="median_sqm_uzs",
+        y="city",
+        orientation="h",
+        color="projects",
+        color_continuous_scale=["#d1fae5", "#0f766e"],
+        text=chart["median_sqm_uzs"].map(fmt_mln),
+        labels={"median_sqm_uzs": "Median m2, UZS", "city": "", "projects": "Loyiha"},
+        title=title,
+    )
+    fig.update_traces(texttemplate="%{text} mln", textposition="outside", cliponaxis=False)
+    return polish(fig, height)
+
+
+def district_bar(stats: pd.DataFrame, *, title: str, ascending: bool, color: str, height: int = 420) -> go.Figure:
+    chart = stats.sort_values("median_sqm_uzs", ascending=ascending).head(10)
+    chart = chart.sort_values("median_sqm_uzs")
+    fig = px.bar(
+        chart,
+        x="median_sqm_uzs",
+        y="district",
+        orientation="h",
+        color_discrete_sequence=[color],
+        text=chart["median_sqm_uzs"].map(fmt_mln),
+        hover_data=["city", "projects"],
+        labels={"median_sqm_uzs": "Median m2, UZS", "district": ""},
+        title=title,
+    )
+    fig.update_traces(texttemplate="%{text} mln", textposition="outside", cliponaxis=False)
+    return polish(fig, height)
+
+
+def render_compact_map(projects: pd.DataFrame, *, title: str = "Loyihalar xaritada", height: int = 520) -> None:
+    geo = projects.dropna(subset=["latitude", "longitude"]).copy()
+    geo = geo[geo["latitude"].between(35, 46) & geo["longitude"].between(55, 75)]
+    if geo.empty:
+        st.info("Bu filtrda xarita uchun koordinata bor loyihalar yo'q.")
+        return
+
+    geo["map_size"] = geo["price_per_sqm_min_uzs"].fillna(geo["price_per_sqm_min_uzs"].median()).fillna(1)
+    fig = px.scatter_mapbox(
+        geo,
+        lat="latitude",
+        lon="longitude",
+        color="price_band",
+        size="map_size",
+        size_max=16,
+        zoom=8,
+        center={"lat": float(geo["latitude"].median()), "lon": float(geo["longitude"].median())},
+        hover_name="project_name",
+        hover_data={
+            "source": True,
+            "city": True,
+            "district": True,
+            "price_per_sqm_min_uzs": ":,.0f",
+            "price_total_min_uzs": ":,.0f",
+            "latitude": False,
+            "longitude": False,
+            "map_size": False,
+        },
+        color_discrete_map=BAND_COLORS,
+        category_orders={"price_band": BAND_ORDER},
+        title=title,
+    )
+    fig.update_layout(mapbox_style="open-street-map")
+    st.plotly_chart(polish(fig, height), use_container_width=True)
+
+
+def render_overview(projects: pd.DataFrame, rooms: pd.DataFrame) -> None:
+    st.markdown("### Umumiy bozor ko'rinishi")
+    st.markdown(
+        '<div class="section-note">Kirish sahifasi: hozirgi snapshot bozorini tez o\'qish uchun eng muhim kardlar, reytinglar va xarita.</div>',
+        unsafe_allow_html=True,
+    )
+    filtered_projects, quality_scope = filter_projects(
+        projects,
+        key="overview",
+        source=True,
+        city=True,
+        district=False,
+        only_priced_default=True,
+    )
+    filtered_rooms = matching_rooms(rooms, filtered_projects)
+
+    if filtered_projects.empty:
+        st.warning("Bu filterlarda narxli loyiha qolmadi.")
+        return
+
+    overview_cards(filtered_projects, filtered_rooms, quality_scope)
+    st.write("")
+
+    cities = city_stats(filtered_projects)
+    districts = district_stats(filtered_projects, 2)
+
+    city_left, city_right = st.columns(2)
+    with city_left:
+        if cities.empty:
+            st.info("Shaharlar reytingi uchun data yetarli emas.")
+        else:
+            st.plotly_chart(city_bar(cities, title="Eng qimmat shahar/viloyatlar", ascending=False), use_container_width=True)
+    with city_right:
+        if cities.empty:
+            st.info("Arzon hududlar uchun data yetarli emas.")
+        else:
+            st.plotly_chart(city_bar(cities, title="Eng arzon shahar/viloyatlar", ascending=True), use_container_width=True)
+
+    district_left, district_right = st.columns(2)
+    with district_left:
+        if districts.empty:
+            st.info("Tumanlar reytingi uchun data yetarli emas.")
+        else:
+            st.plotly_chart(
+                district_bar(districts, title="Eng qimmat tumanlar", ascending=False, color="#be123c"),
+                use_container_width=True,
+            )
+    with district_right:
+        if districts.empty:
+            st.info("Value tumanlar uchun data yetarli emas.")
+        else:
+            st.plotly_chart(
+                district_bar(districts, title="Eng arzon tumanlar", ascending=True, color="#0f766e"),
+                use_container_width=True,
+            )
+
+    render_compact_map(filtered_projects, title="Umumiy xarita: narx segmentlari va joylashuv", height=560)
 
 
 def filter_data(projects: pd.DataFrame, rooms: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, int]:
@@ -588,116 +914,96 @@ def render_executive(projects: pd.DataFrame, rooms: pd.DataFrame, quality_scope:
 
 def render_cities(projects: pd.DataFrame) -> None:
     st.markdown("### Shahar va viloyat benchmarklari")
-    stats = city_stats(projects)
+    filtered_projects, _ = filter_projects(
+        projects,
+        key="cities",
+        source=True,
+        city=True,
+        district=False,
+        price_range=True,
+        only_priced_default=True,
+    )
+    stats = city_stats(filtered_projects)
     if stats.empty:
         st.info("Bu filtrda shahar/viloyat kesimi uchun yetarli narx yo'q.")
         return
 
-    left, right = st.columns([1.2, 1])
+    left, right = st.columns(2)
     with left:
-        fig = px.scatter(
-            stats,
-            x="projects",
-            y="median_sqm_uzs",
-            size="projects",
-            color="sources",
-            hover_name="city",
-            color_continuous_scale=["#d1fae5", "#0f766e"],
-            labels={
-                "projects": "Loyihalar soni",
-                "median_sqm_uzs": "Median m2 narx, UZS",
-                "sources": "Manbalar",
-            },
-            title="Volume vs narx: qaysi hududda signal kuchli?",
-        )
-        fig.update_yaxes(tickformat=",.0f")
-        st.plotly_chart(polish(fig, 470), use_container_width=True)
+        st.plotly_chart(city_bar(stats, title="Eng qimmat shahar/viloyatlar", ascending=False, height=460), use_container_width=True)
     with right:
-        table = stats.copy()
-        table["median_m2_mln"] = table["median_sqm_uzs"] / 1_000_000
-        table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
-        st.dataframe(
-            table[
-                [
-                    "city",
-                    "projects",
-                    "sources",
-                    "median_m2_mln",
-                    "median_total_mlrd",
-                    "low_sqm_uzs",
-                    "high_sqm_uzs",
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "city": "Hudud",
-                "projects": "Loyiha",
-                "sources": "Manba",
-                "median_m2_mln": st.column_config.NumberColumn("Median m2, mln", format="%.1f"),
-                "median_total_mlrd": st.column_config.NumberColumn("Median min total, mlrd", format="%.2f"),
-                "low_sqm_uzs": st.column_config.NumberColumn("Past m2", format="%d"),
-                "high_sqm_uzs": st.column_config.NumberColumn("Yuqori m2", format="%d"),
-            },
-        )
+        st.plotly_chart(city_bar(stats, title="Eng arzon shahar/viloyatlar", ascending=True, height=460), use_container_width=True)
+
+    table = stats.copy()
+    table["median_m2_mln"] = table["median_sqm_uzs"] / 1_000_000
+    table["avg_m2_mln"] = table["avg_sqm_uzs"] / 1_000_000
+    table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
+    st.dataframe(
+        table[["city", "projects", "sources", "median_m2_mln", "avg_m2_mln", "median_total_mlrd"]],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "city": "Hudud",
+            "projects": "Loyiha",
+            "sources": "Manba",
+            "median_m2_mln": st.column_config.NumberColumn("Median m2, mln", format="%.1f"),
+            "avg_m2_mln": st.column_config.NumberColumn("O'rtacha m2, mln", format="%.1f"),
+            "median_total_mlrd": st.column_config.NumberColumn("Median uy narxi, mlrd", format="%.2f"),
+        },
+    )
 
 
-def render_districts(projects: pd.DataFrame, min_projects: int) -> None:
+def render_districts(projects: pd.DataFrame) -> None:
     st.markdown("### Tumanlar: premium va value zonalar")
-    stats = district_stats(projects, min_projects)
+    filtered_projects, _ = filter_projects(
+        projects,
+        key="districts",
+        source=True,
+        city=True,
+        district=False,
+        price_range=True,
+        only_priced_default=True,
+    )
+    min_projects = st.slider("Reytingga kirishi uchun minimum loyiha", 1, 10, 2, key="districts_min_projects")
+    stats = district_stats(filtered_projects, min_projects)
     if stats.empty:
         st.info("Bu filtrda tuman reytingi uchun yetarli narxli data yo'q.")
         return
 
-    expensive = stats.head(12).sort_values("median_sqm_uzs")
-    affordable = stats.tail(12).sort_values("median_sqm_uzs", ascending=False)
     left, right = st.columns(2)
     with left:
-        fig = px.bar(
-            expensive,
-            x="median_sqm_uzs",
-            y="district",
-            orientation="h",
-            color_discrete_sequence=["#be123c"],
-            text=expensive["median_sqm_uzs"].map(fmt_mln),
-            hover_data=["city", "projects", "sources"],
-            labels={"median_sqm_uzs": "Median m2, UZS", "district": ""},
-            title="Premium tumanlar",
+        st.plotly_chart(
+            district_bar(stats, title="Premium tumanlar", ascending=False, color="#be123c", height=500),
+            use_container_width=True,
         )
-        fig.update_traces(texttemplate="%{text} mln", textposition="outside", cliponaxis=False)
-        st.plotly_chart(polish(fig, 480), use_container_width=True)
     with right:
-        fig = px.bar(
-            affordable,
-            x="median_sqm_uzs",
-            y="district",
-            orientation="h",
-            color_discrete_sequence=["#0f766e"],
-            text=affordable["median_sqm_uzs"].map(fmt_mln),
-            hover_data=["city", "projects", "sources"],
-            labels={"median_sqm_uzs": "Median m2, UZS", "district": ""},
-            title="Nisbatan arzon zonalar",
+        st.plotly_chart(
+            district_bar(stats, title="Nisbatan arzon tumanlar", ascending=True, color="#0f766e", height=500),
+            use_container_width=True,
         )
-        fig.update_traces(texttemplate="%{text} mln", textposition="outside", cliponaxis=False)
-        st.plotly_chart(polish(fig, 480), use_container_width=True)
 
-    fig = px.scatter(
-        stats,
-        x="projects",
-        y="median_sqm_uzs",
-        color="city",
-        size="projects",
-        hover_name="district",
-        labels={"projects": "Loyiha soni", "median_sqm_uzs": "Median m2, UZS"},
-        title="Tumanlar narx-volume matritsasi",
+    table = stats.copy()
+    table["median_m2_mln"] = table["median_sqm_uzs"] / 1_000_000
+    table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
+    st.dataframe(
+        table[["city", "district", "projects", "sources", "median_m2_mln", "median_total_mlrd"]],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "city": "Hudud",
+            "district": "Tuman",
+            "projects": "Loyiha",
+            "sources": "Manba",
+            "median_m2_mln": st.column_config.NumberColumn("Median m2, mln", format="%.1f"),
+            "median_total_mlrd": st.column_config.NumberColumn("Median uy narxi, mlrd", format="%.2f"),
+        },
     )
-    fig.update_yaxes(tickformat=",.0f")
-    st.plotly_chart(polish(fig, 520), use_container_width=True)
 
 
-def render_rooms(rooms: pd.DataFrame) -> None:
+def render_rooms(rooms: pd.DataFrame, projects: pd.DataFrame) -> None:
     st.markdown("### Xonalar iqtisodiyoti")
-    stats = room_stats(rooms)
+    filtered_rooms = filter_rooms(rooms, projects, key="rooms")
+    stats = room_stats(filtered_rooms)
     if stats.empty:
         st.info("Bu filtrda xona kesimidagi data yo'q.")
         return
@@ -726,80 +1032,41 @@ def render_rooms(rooms: pd.DataFrame) -> None:
     )
     st.plotly_chart(polish(fig, 500), use_container_width=True)
 
-    left, right = st.columns([1.25, 1])
-    with left:
-        plot_df = rooms.dropna(subset=["rooms", "price_per_sqm_uzs"]).copy()
-        plot_df = plot_df[plot_df["rooms"].between(0, 7, inclusive="both")]
-        if plot_df.empty:
-            st.info("m2 narx boxplot uchun data yetarli emas.")
-        else:
-            plot_df["room_label"] = plot_df["rooms"].apply(room_label)
-            fig = px.box(
-                plot_df,
-                x="room_label",
-                y="price_per_sqm_uzs",
-                color="room_label",
-                color_discrete_sequence=COLOR_SEQUENCE,
-                points="outliers",
-                labels={"room_label": "Xona", "price_per_sqm_uzs": "m2 narx, UZS"},
-                title="Har bir xona formatida m2 narx dispersiyasi",
-            )
-            fig.update_yaxes(tickformat=",.0f")
-            fig.update_layout(showlegend=False)
-            st.plotly_chart(polish(fig, 450), use_container_width=True)
-    with right:
-        table = stats.copy()
-        table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
-        table["median_m2_mln"] = table["median_sqm_uzs"] / 1_000_000
-        st.dataframe(
-            table[["room_label", "offers", "median_area_sqm", "median_m2_mln", "median_total_mlrd"]],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "room_label": "Xona",
-                "offers": "Rows",
-                "median_area_sqm": st.column_config.NumberColumn("Median maydon", format="%.1f"),
-                "median_m2_mln": st.column_config.NumberColumn("Median m2, mln", format="%.1f"),
-                "median_total_mlrd": st.column_config.NumberColumn("Median total, mlrd", format="%.2f"),
-            },
-        )
+    table = stats.copy()
+    table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
+    table["median_m2_mln"] = table["median_sqm_uzs"] / 1_000_000
+    st.dataframe(
+        table[["room_label", "offers", "median_area_sqm", "median_m2_mln", "median_total_mlrd"]],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "room_label": "Xona",
+            "offers": "Taklif rows",
+            "median_area_sqm": st.column_config.NumberColumn("Median maydon", format="%.1f"),
+            "median_m2_mln": st.column_config.NumberColumn("Median m2, mln", format="%.1f"),
+            "median_total_mlrd": st.column_config.NumberColumn("Median total, mlrd", format="%.2f"),
+        },
+    )
 
 
 def render_map(projects: pd.DataFrame) -> None:
     st.markdown("### Geo ko'rinish va premium nuqtalar")
-    geo = projects.dropna(subset=["latitude", "longitude"]).copy()
+    filtered_projects, _ = filter_projects(
+        projects,
+        key="map",
+        source=True,
+        city=True,
+        district=False,
+        segment=True,
+        only_priced_default=True,
+    )
+    geo = filtered_projects.dropna(subset=["latitude", "longitude"]).copy()
     geo = geo[geo["latitude"].between(35, 46) & geo["longitude"].between(55, 75)]
     if geo.empty:
         st.info("Bu filtrda latitude/longitude bor loyihalar topilmadi.")
         return
 
-    geo["map_size"] = geo["price_per_sqm_min_uzs"].fillna(geo["price_per_sqm_min_uzs"].median()).fillna(1)
-    fig = px.scatter_mapbox(
-        geo,
-        lat="latitude",
-        lon="longitude",
-        color="price_band",
-        size="map_size",
-        size_max=18,
-        zoom=8,
-        center={"lat": float(geo["latitude"].median()), "lon": float(geo["longitude"].median())},
-        hover_name="project_name",
-        hover_data={
-            "source": True,
-            "city": True,
-            "district": True,
-            "price_per_sqm_min_uzs": ":,.0f",
-            "price_total_min_uzs": ":,.0f",
-            "latitude": False,
-            "longitude": False,
-            "map_size": False,
-        },
-        color_discrete_map=BAND_COLORS,
-        category_orders={"price_band": BAND_ORDER},
-        title="Narx segmentlari xaritada",
-    )
-    fig.update_layout(mapbox_style="open-street-map")
-    st.plotly_chart(polish(fig, 610), use_container_width=True)
+    render_compact_map(filtered_projects, title="Narx segmentlari xaritada", height=640)
 
     premium = (
         geo.dropna(subset=["price_per_sqm_min_uzs"])
@@ -837,7 +1104,17 @@ def render_map(projects: pd.DataFrame) -> None:
 
 def render_projects(projects: pd.DataFrame) -> None:
     st.markdown("### Loyiha-level deal table")
-    if projects.empty:
+    filtered_projects, _ = filter_projects(
+        projects,
+        key="projects",
+        source=True,
+        city=True,
+        district=True,
+        price_range=True,
+        search=True,
+        only_priced_default=True,
+    )
+    if filtered_projects.empty:
         st.info("Bu filtrda loyiha topilmadi.")
         return
 
@@ -850,7 +1127,7 @@ def render_projects(projects: pd.DataFrame) -> None:
     }
     sort_label = st.selectbox("Sort", list(sort_options.keys()), index=0)
     sort_col, ascending = sort_options[sort_label]
-    table = projects.sort_values(sort_col, ascending=ascending, na_position="last").copy()
+    table = filtered_projects.sort_values(sort_col, ascending=ascending, na_position="last").copy()
     table["m2_mln"] = table["price_per_sqm_min_uzs"] / 1_000_000
     table["min_total_mlrd"] = table["price_total_min_uzs"] / 1_000_000_000
     table["area_range"] = table.apply(
@@ -906,8 +1183,16 @@ def render_projects(projects: pd.DataFrame) -> None:
     )
 
 
-def render_quality(quality_scope: pd.DataFrame, filtered_projects: pd.DataFrame) -> None:
+def render_quality(projects: pd.DataFrame) -> None:
     st.markdown("### Data sifati va coverage")
+    quality_scope, _ = filter_projects(
+        projects,
+        key="quality",
+        source=True,
+        city=True,
+        district=False,
+        only_priced_default=False,
+    )
     if quality_scope.empty:
         st.info("Data sifati uchun scope bo'sh.")
         return
@@ -1001,27 +1286,26 @@ def main() -> None:
 
     projects, rooms = load_data()
     render_header(projects)
-    filtered_projects, filtered_rooms, quality_scope, min_projects = filter_data(projects, rooms)
 
-    if filtered_projects.empty and filtered_rooms.empty:
-        st.warning("Bu filter kombinatsiyasida data qolmadi. Filtrlarni kengaytiring.")
+    if projects.empty and rooms.empty:
+        st.warning("Data topilmadi. Avval scraper ishga tushiring.")
         return
 
-    tabs = st.tabs(["Executive", "Shaharlar", "Tumanlar", "Xonalar", "Geo", "Loyihalar", "Data quality"])
+    tabs = st.tabs(["Umumiy", "Shaharlar", "Tumanlar", "Xonalar", "Xarita", "Loyihalar", "Data quality"])
     with tabs[0]:
-        render_executive(filtered_projects, filtered_rooms, quality_scope, min_projects)
+        render_overview(projects, rooms)
     with tabs[1]:
-        render_cities(filtered_projects)
+        render_cities(projects)
     with tabs[2]:
-        render_districts(filtered_projects, min_projects)
+        render_districts(projects)
     with tabs[3]:
-        render_rooms(filtered_rooms)
+        render_rooms(rooms, projects)
     with tabs[4]:
-        render_map(filtered_projects)
+        render_map(projects)
     with tabs[5]:
-        render_projects(filtered_projects)
+        render_projects(projects)
     with tabs[6]:
-        render_quality(quality_scope, filtered_projects)
+        render_quality(projects)
 
     st.caption(
         "Data files: data/processed/projects.csv va data/processed/room_prices.csv. "
