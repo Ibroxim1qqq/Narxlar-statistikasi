@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from database import DB_PATH, database_summary, load_latest_snapshot
+from database import DB_PATH, database_summary, load_latest_snapshot, quote_identifier
 
 
 ROOT = Path(__file__).resolve().parent
@@ -611,7 +611,7 @@ def render_compact_map(projects: pd.DataFrame, *, title: str = "Loyihalar xarita
         return
 
     geo["map_size"] = geo["price_per_sqm_min_uzs"].fillna(geo["price_per_sqm_min_uzs"].median()).fillna(1)
-    fig = px.scatter_mapbox(
+    fig = px.scatter_map(
         geo,
         lat="latitude",
         lon="longitude",
@@ -633,10 +633,10 @@ def render_compact_map(projects: pd.DataFrame, *, title: str = "Loyihalar xarita
         },
         color_discrete_map=BAND_COLORS,
         category_orders={"price_band": BAND_ORDER},
+        map_style="open-street-map",
         title=title,
     )
-    fig.update_layout(mapbox_style="open-street-map")
-    st.plotly_chart(polish(fig, height), use_container_width=True)
+    st.plotly_chart(polish(fig, height), width="stretch")
 
 
 def render_overview(projects: pd.DataFrame, rooms: pd.DataFrame) -> None:
@@ -670,12 +670,12 @@ def render_overview(projects: pd.DataFrame, rooms: pd.DataFrame) -> None:
         if cities.empty:
             st.info("Shaharlar reytingi uchun data yetarli emas.")
         else:
-            st.plotly_chart(city_bar(cities, title="Eng qimmat shahar/viloyatlar", ascending=False), use_container_width=True)
+            st.plotly_chart(city_bar(cities, title="Eng qimmat shahar/viloyatlar", ascending=False), width="stretch")
     with city_right:
         if cities.empty:
             st.info("Arzon hududlar uchun data yetarli emas.")
         else:
-            st.plotly_chart(city_bar(cities, title="Eng arzon shahar/viloyatlar", ascending=True), use_container_width=True)
+            st.plotly_chart(city_bar(cities, title="Eng arzon shahar/viloyatlar", ascending=True), width="stretch")
 
     district_left, district_right = st.columns(2)
     with district_left:
@@ -684,7 +684,7 @@ def render_overview(projects: pd.DataFrame, rooms: pd.DataFrame) -> None:
         else:
             st.plotly_chart(
                 district_bar(districts, title="Eng qimmat tumanlar", ascending=False, color="#be123c"),
-                use_container_width=True,
+                width="stretch",
             )
     with district_right:
         if districts.empty:
@@ -692,7 +692,7 @@ def render_overview(projects: pd.DataFrame, rooms: pd.DataFrame) -> None:
         else:
             st.plotly_chart(
                 district_bar(districts, title="Eng arzon tumanlar", ascending=True, color="#0f766e"),
-                use_container_width=True,
+                width="stretch",
             )
 
     render_compact_map(filtered_projects, title="Umumiy xarita: narx segmentlari va joylashuv", height=560)
@@ -897,7 +897,7 @@ def render_executive(projects: pd.DataFrame, rooms: pd.DataFrame, quality_scope:
                 title="Shahar/viloyat bo'yicha premiumlik reytingi",
             )
             fig.update_traces(texttemplate="%{text} mln", textposition="outside", cliponaxis=False)
-            st.plotly_chart(polish(fig, 500), use_container_width=True)
+            st.plotly_chart(polish(fig, 500), width="stretch")
 
     with right:
         priced = projects.dropna(subset=["price_per_sqm_min_uzs"]).copy()
@@ -915,7 +915,7 @@ def render_executive(projects: pd.DataFrame, rooms: pd.DataFrame, quality_scope:
                 title="m2 narx taqsimoti",
             )
             fig.update_xaxes(tickformat=",.0f")
-            st.plotly_chart(polish(fig, 500), use_container_width=True)
+            st.plotly_chart(polish(fig, 500), width="stretch")
 
 
 def render_cities(projects: pd.DataFrame) -> None:
@@ -936,9 +936,9 @@ def render_cities(projects: pd.DataFrame) -> None:
 
     left, right = st.columns(2)
     with left:
-        st.plotly_chart(city_bar(stats, title="Eng qimmat shahar/viloyatlar", ascending=False, height=460), use_container_width=True)
+        st.plotly_chart(city_bar(stats, title="Eng qimmat shahar/viloyatlar", ascending=False, height=460), width="stretch")
     with right:
-        st.plotly_chart(city_bar(stats, title="Eng arzon shahar/viloyatlar", ascending=True, height=460), use_container_width=True)
+        st.plotly_chart(city_bar(stats, title="Eng arzon shahar/viloyatlar", ascending=True, height=460), width="stretch")
 
     table = stats.copy()
     table["median_m2_mln"] = table["median_sqm_uzs"] / 1_000_000
@@ -946,7 +946,7 @@ def render_cities(projects: pd.DataFrame) -> None:
     table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
     st.dataframe(
         table[["city", "projects", "sources", "median_m2_mln", "avg_m2_mln", "median_total_mlrd"]],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "city": "Hudud",
@@ -980,12 +980,12 @@ def render_districts(projects: pd.DataFrame) -> None:
     with left:
         st.plotly_chart(
             district_bar(stats, title="Premium tumanlar", ascending=False, color="#be123c", height=500),
-            use_container_width=True,
+            width="stretch",
         )
     with right:
         st.plotly_chart(
             district_bar(stats, title="Nisbatan arzon tumanlar", ascending=True, color="#0f766e", height=500),
-            use_container_width=True,
+            width="stretch",
         )
 
     table = stats.copy()
@@ -993,7 +993,7 @@ def render_districts(projects: pd.DataFrame) -> None:
     table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
     st.dataframe(
         table[["city", "district", "projects", "sources", "median_m2_mln", "median_total_mlrd"]],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "city": "Hudud",
@@ -1036,14 +1036,14 @@ def render_rooms(rooms: pd.DataFrame, projects: pd.DataFrame) -> None:
         yaxis=dict(title="Median min total, UZS", tickformat=",.0f"),
         yaxis2=dict(title="Median maydon, m2", overlaying="y", side="right", showgrid=False),
     )
-    st.plotly_chart(polish(fig, 500), use_container_width=True)
+    st.plotly_chart(polish(fig, 500), width="stretch")
 
     table = stats.copy()
     table["median_total_mlrd"] = table["median_total_uzs"] / 1_000_000_000
     table["median_m2_mln"] = table["median_sqm_uzs"] / 1_000_000
     st.dataframe(
         table[["room_label", "offers", "median_area_sqm", "median_m2_mln", "median_total_mlrd"]],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "room_label": "Xona",
@@ -1093,7 +1093,7 @@ def render_map(projects: pd.DataFrame) -> None:
                     "source_url",
                 ]
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "project_name": "Loyiha",
@@ -1162,7 +1162,7 @@ def render_projects(projects: pd.DataFrame) -> None:
                 "source_url",
             ]
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=560,
         column_config={
@@ -1218,13 +1218,13 @@ def render_quality(projects: pd.DataFrame) -> None:
             title="Manbalar bo'yicha coverage",
         )
         fig.update_traces(textposition="outside", cliponaxis=False)
-        st.plotly_chart(polish(fig, 430), use_container_width=True)
+        st.plotly_chart(polish(fig, 430), width="stretch")
     with right:
         display = stats.copy()
         display["median_m2_mln"] = display["median_sqm_uzs"] / 1_000_000
         st.dataframe(
             display[["source", "projects", "priced_projects", "price_coverage", "median_m2_mln", "cities", "districts"]],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "source": "Manba",
@@ -1269,7 +1269,7 @@ def render_quality(projects: pd.DataFrame) -> None:
         title="Qaysi maydonlarda bo'sh qiymat ko'p?",
     )
     fig.update_xaxes(tickformat=".0%")
-    st.plotly_chart(polish(fig, 380), use_container_width=True)
+    st.plotly_chart(polish(fig, 380), width="stretch")
 
     st.markdown(
         """
@@ -1306,7 +1306,13 @@ def render_database() -> None:
     st.code(
         """SELECT * FROM latest_projects;
 SELECT * FROM latest_room_prices;
-SELECT * FROM snapshots ORDER BY snapshot_utc DESC;""",
+SELECT * FROM snapshots ORDER BY snapshot_date DESC;
+
+SELECT city, COUNT(*) AS projects, AVG(price_per_sqm_min_uzs) AS avg_m2_uzs
+FROM latest_projects
+WHERE price_per_sqm_min_uzs IS NOT NULL
+GROUP BY city
+ORDER BY avg_m2_uzs DESC;""",
         language="sql",
     )
 
@@ -1314,6 +1320,7 @@ SELECT * FROM snapshots ORDER BY snapshot_utc DESC;""",
         snapshots = pd.read_sql_query(
             """
             SELECT
+                snapshot_date,
                 snapshot_utc,
                 projects_total,
                 room_price_rows_total,
@@ -1334,13 +1341,84 @@ SELECT * FROM snapshots ORDER BY snapshot_utc DESC;""",
             conn,
         )
 
+        history_trend = pd.read_sql_query(
+            """
+            SELECT
+                snapshot_date,
+                snapshot_utc,
+                projects_total,
+                room_price_rows_total,
+                projects_with_price
+            FROM snapshots
+            ORDER BY snapshot_utc
+            """,
+            conn,
+        )
+
     left, right = st.columns([1.2, 1])
     with left:
         st.markdown("**Oxirgi snapshotlar**")
-        st.dataframe(snapshots, use_container_width=True, hide_index=True)
+        st.dataframe(snapshots, width="stretch", hide_index=True)
     with right:
         st.markdown("**Latest snapshot source coverage**")
-        st.dataframe(source_counts, use_container_width=True, hide_index=True)
+        st.dataframe(source_counts, width="stretch", hide_index=True)
+
+    if len(history_trend) > 1:
+        trend = history_trend.copy()
+        trend["snapshot_utc"] = pd.to_datetime(trend["snapshot_utc"], utc=True, errors="coerce")
+        trend_long = trend.melt(
+            id_vars="snapshot_utc",
+            value_vars=["projects_total", "room_price_rows_total", "projects_with_price"],
+            var_name="metric",
+            value_name="rows",
+        )
+        fig = px.line(
+            trend_long,
+            x="snapshot_utc",
+            y="rows",
+            color="metric",
+            markers=True,
+            title="Kunlik snapshot o'sishi",
+            labels={"snapshot_utc": "Snapshot vaqti", "rows": "Qatorlar", "metric": "Metric"},
+        )
+        st.plotly_chart(polish(fig, 360), width="stretch")
+
+    st.markdown("**Database explorer**")
+    st.markdown(
+        '<div class="section-note">Jadval yoki view tanlang: dashboard ichidan SQL natijasini ko\'rasiz va CSV qilib olasiz.</div>',
+        unsafe_allow_html=True,
+    )
+    table_options = [
+        table
+        for table in info.get("tables", [])
+        if table in {"snapshots", "projects_history", "room_prices_history", "latest_projects", "latest_room_prices"}
+    ]
+    if table_options:
+        explorer_cols = st.columns([1.1, .55, .85])
+        with explorer_cols[0]:
+            selected_table = st.selectbox(
+                "Jadval/view",
+                table_options,
+                index=table_options.index("latest_projects") if "latest_projects" in table_options else 0,
+            )
+        with explorer_cols[1]:
+            row_limit = st.number_input("Limit", min_value=20, max_value=5000, value=300, step=20)
+        with explorer_cols[2]:
+            st.code(f"SELECT * FROM {selected_table} LIMIT {int(row_limit)};", language="sql")
+
+        with sqlite3.connect(DB_PATH) as conn:
+            preview = pd.read_sql_query(
+                f"SELECT * FROM {quote_identifier(selected_table)} LIMIT ?",
+                conn,
+                params=(int(row_limit),),
+            )
+        st.dataframe(preview, width="stretch", hide_index=True, height=420)
+        st.download_button(
+            "Tanlangan jadvalni CSV yuklab olish",
+            preview.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"{selected_table}.csv",
+            mime="text/csv",
+        )
 
     if latest:
         st.caption(f"Latest snapshot: `{latest[1]}`. DB fayl: `{DB_PATH}`")

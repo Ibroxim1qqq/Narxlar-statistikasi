@@ -1,0 +1,44 @@
+$ErrorActionPreference = "Stop"
+
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+$BundledPython = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+$Python = if (Test-Path $BundledPython) { $BundledPython } else { "python" }
+$LogDir = Join-Path $ProjectRoot "data\logs"
+$LogFile = Join-Path $LogDir ("daily_update_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+
+function Resolve-Git {
+    $githubDesktopGit = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "GitHubDesktop\app-*\resources\app\git\cmd\git.exe") -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
+    if ($githubDesktopGit) {
+        return $githubDesktopGit.FullName
+    }
+    return "git"
+}
+
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+Set-Location $ProjectRoot
+
+Write-Output ("Started daily update at {0}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) | Tee-Object -FilePath $LogFile
+& $Python "daily_update.py" 2>&1 | Tee-Object -FilePath $LogFile -Append
+$ExitCode = $LASTEXITCODE
+if ($ExitCode -eq 0) {
+    $Git = Resolve-Git
+    $Changes = & $Git status --porcelain data/housing_prices.sqlite data/processed/projects.csv data/processed/room_prices.csv data/processed/summary.json 2>&1
+    if ($LASTEXITCODE -eq 0 -and $Changes) {
+        Write-Output "Committing updated database snapshot to GitHub..." | Tee-Object -FilePath $LogFile -Append
+        & $Git add data/housing_prices.sqlite data/processed/projects.csv data/processed/room_prices.csv data/processed/summary.json 2>&1 | Tee-Object -FilePath $LogFile -Append
+        & $Git commit -m ("Daily housing price snapshot {0}" -f (Get-Date -Format "yyyy-MM-dd")) 2>&1 | Tee-Object -FilePath $LogFile -Append
+        if ($LASTEXITCODE -eq 0) {
+            & $Git push 2>&1 | Tee-Object -FilePath $LogFile -Append
+            $ExitCode = $LASTEXITCODE
+        } else {
+            $ExitCode = $LASTEXITCODE
+        }
+    } else {
+        Write-Output "No tracked data changes to commit." | Tee-Object -FilePath $LogFile -Append
+    }
+}
+Write-Output ("Finished daily update with exit code {0} at {1}" -f $ExitCode, (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) | Tee-Object -FilePath $LogFile -Append
+
+exit $ExitCode

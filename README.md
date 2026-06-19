@@ -56,17 +56,26 @@ Terminaldan tez tekshirish:
 python inspect_database.py
 ```
 
-Codex automation har kuni soat 08:00 da `daily_update.py`ni ishga tushirib, bazaga yangi snapshot qo'shadi.
+Dashboard ichidagi `Database` tabda `snapshots`, `latest_projects`, `latest_room_prices`, `projects_history` va `room_prices_history` jadvallarini ko'rish hamda CSV qilib yuklab olish mumkin.
+
+`daily_update.py` bir kunda bitta snapshot saqlaydi: o'sha Asia/Tashkent sanasida qayta ishga tushsa, shu kun yozuvini yangilaydi. Codex automation har kuni soat 08:00 da `daily_update.py`ni ishga tushirib, bazaga yangi snapshot qo'shadi. Kompyuterning o'zida Windows Task Scheduler orqali ham o'rnatish uchun:
+
+```powershell
+.\scripts\install_daily_task.ps1
+```
+
+Task nomi: `Narxlar Statistikasi Daily Update`. Loglar `data/logs/` ichida saqlanadi. Task data o'zgarsa `data/housing_prices.sqlite` va `data/processed/` fayllarini commit qilib GitHubga push ham qiladi.
 
 ## Dashboard bo'limlari
 
-- `Executive` - KPI, coverage, premium tuman va xona benchmarklari.
+- `Umumiy` - KPI, eng qimmat/arzon hududlar, tuman reytingi va xarita.
 - `Shaharlar` - shahar/viloyat bo'yicha median m2 narx va volume.
 - `Tumanlar` - premium/value zonalar va narx-volume matritsasi.
 - `Xonalar` - xona soni bo'yicha ticket size, maydon va m2 dispersiyasi.
-- `Geo` - latitude/longitude bor loyihalarni xaritada ko'rish.
+- `Xarita` - latitude/longitude bor loyihalarni xaritada ko'rish.
 - `Loyihalar` - loyiha-level jadval, sort, search va CSV export.
 - `Data quality` - manba coverage, missing fields va caveatlar.
+- `Database` - SQLite snapshotlar, latest viewlar va jadval preview.
 
 ## Manbalar
 

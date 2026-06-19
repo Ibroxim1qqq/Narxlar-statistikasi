@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -12,16 +13,19 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 DB_PATH = DATA_DIR / "housing_prices.sqlite"
+LOCAL_TZ = ZoneInfo("Asia/Tashkent")
 
 
 def snapshot_id_from_utc(snapshot_utc: str) -> str:
-    safe = (
-        snapshot_utc.replace("+00:00", "Z")
-        .replace(":", "")
-        .replace("-", "")
-        .replace(".", "")
-    )
-    return safe
+    return snapshot_day_from_utc(snapshot_utc)
+
+
+def snapshot_day_from_utc(snapshot_utc: str) -> str:
+    normalized = snapshot_utc.replace("Z", "+00:00")
+    timestamp = datetime.fromisoformat(normalized)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(LOCAL_TZ).date().isoformat()
 
 
 def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
@@ -37,6 +41,7 @@ def ensure_metadata_tables(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS snapshots (
             snapshot_id TEXT PRIMARY KEY,
+            snapshot_date TEXT,
             snapshot_utc TEXT NOT NULL,
             created_at_utc TEXT NOT NULL,
             projects_total INTEGER NOT NULL,
@@ -47,6 +52,17 @@ def ensure_metadata_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(snapshots)").fetchall()}
+    if "snapshot_date" not in columns:
+        conn.execute("ALTER TABLE snapshots ADD COLUMN snapshot_date TEXT")
+    rows = conn.execute(
+        "SELECT snapshot_id, snapshot_utc FROM snapshots WHERE snapshot_date IS NULL OR snapshot_date = ''"
+    ).fetchall()
+    for snapshot_id, snapshot_utc in rows:
+        conn.execute(
+            "UPDATE snapshots SET snapshot_date = ? WHERE snapshot_id = ?",
+            (snapshot_day_from_utc(str(snapshot_utc)), snapshot_id),
+        )
 
 
 def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
@@ -113,20 +129,35 @@ def save_snapshot(
     db_path: Path = DB_PATH,
 ) -> Path:
     snapshot_utc = str(summary["snapshot_utc"])
+    snapshot_date = snapshot_day_from_utc(snapshot_utc)
     snapshot_id = snapshot_id_from_utc(snapshot_utc)
 
     projects_to_save = projects.copy()
     room_prices_to_save = room_prices.copy()
     projects_to_save.insert(0, "snapshot_id", snapshot_id)
+    projects_to_save.insert(1, "snapshot_date", snapshot_date)
     room_prices_to_save.insert(0, "snapshot_id", snapshot_id)
+    room_prices_to_save.insert(1, "snapshot_date", snapshot_date)
 
     with connect(db_path) as conn:
         ensure_metadata_tables(conn)
-        conn.execute("DELETE FROM snapshots WHERE snapshot_id = ?", (snapshot_id,))
+        existing_snapshot_ids = [
+            row[0]
+            for row in conn.execute(
+                "SELECT snapshot_id FROM snapshots WHERE snapshot_date = ? OR snapshot_id = ?",
+                (snapshot_date, snapshot_id),
+            ).fetchall()
+        ]
         if table_exists(conn, "projects_history"):
-            conn.execute("DELETE FROM projects_history WHERE snapshot_id = ?", (snapshot_id,))
+            for existing_id in existing_snapshot_ids:
+                conn.execute("DELETE FROM projects_history WHERE snapshot_id = ?", (existing_id,))
         if table_exists(conn, "room_prices_history"):
-            conn.execute("DELETE FROM room_prices_history WHERE snapshot_id = ?", (snapshot_id,))
+            for existing_id in existing_snapshot_ids:
+                conn.execute("DELETE FROM room_prices_history WHERE snapshot_id = ?", (existing_id,))
+        conn.execute(
+            "DELETE FROM snapshots WHERE snapshot_date = ? OR snapshot_id = ?",
+            (snapshot_date, snapshot_id),
+        )
 
         ensure_columns(conn, "projects_history", projects_to_save)
         ensure_columns(conn, "room_prices_history", room_prices_to_save)
@@ -137,6 +168,7 @@ def save_snapshot(
             """
             INSERT INTO snapshots (
                 snapshot_id,
+                snapshot_date,
                 snapshot_utc,
                 created_at_utc,
                 projects_total,
@@ -145,10 +177,11 @@ def save_snapshot(
                 projects_by_source_json,
                 room_rows_by_source_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot_id,
+                snapshot_date,
                 snapshot_utc,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 int(summary.get("projects_total", 0)),
