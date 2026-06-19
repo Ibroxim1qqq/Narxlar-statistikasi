@@ -2,6 +2,8 @@
 
 Bu loyiha hozirgi bozor snapshotini yig'adi va dashboardga chiqaradi.
 
+[Renderga deploy qilish](https://dashboard.render.com/blueprint/new?repo=https%3A%2F%2Fgithub.com%2FIbroxim1qqq%2FNarxlar-statistikasi)
+
 ## Ishga tushirish
 
 ```powershell
