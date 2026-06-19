@@ -56,6 +56,32 @@ Terminaldan tez tekshirish:
 python inspect_database.py
 ```
 
+PostgreSQL yoqish uchun `.env` ichida DSN turadi:
+
+```text
+POSTGRES_DSN=postgresql+psycopg://narxlar_app:...@localhost:5432/narxlar_statistikasi
+```
+
+Mahalliy kompyuterda PostgreSQL va pgAdmin o'rnatish:
+
+```powershell
+.\scripts\install_postgres_pgadmin.ps1
+.\scripts\setup_postgres_database.ps1
+python daily_update.py
+```
+
+pgAdmin orqali ulanish:
+
+```text
+Host: localhost
+Port: 5432
+Database: narxlar_statistikasi
+Username: narxlar_app
+Password: .env ichidagi POSTGRES_APP_PASSWORD
+```
+
+PostgreSQL sozlangan bo'lsa, scraper snapshotni SQLite bilan birga PostgreSQL'ga ham yozadi. Dashboard esa birinchi PostgreSQL'dan o'qiydi, ulanish bo'lmasa SQLite fallback ishlaydi.
+
 Dashboard ichidagi `Database` tabda `snapshots`, `latest_projects`, `latest_room_prices`, `projects_history` va `room_prices_history` jadvallarini ko'rish hamda CSV qilib yuklab olish mumkin.
 
 `daily_update.py` bir kunda bitta snapshot saqlaydi: o'sha Asia/Tashkent sanasida qayta ishga tushsa, shu kun yozuvini yangilaydi. Codex automation har kuni soat 08:00 da `daily_update.py`ni ishga tushirib, bazaga yangi snapshot qo'shadi. Kompyuterning o'zida Windows Task Scheduler orqali ham o'rnatish uchun:

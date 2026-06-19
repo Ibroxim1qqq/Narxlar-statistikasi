@@ -12,6 +12,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from database import DB_PATH, database_summary, load_latest_snapshot, quote_identifier
+from postgres_database import (
+    load_latest_snapshot_postgres,
+    postgres_enabled,
+    postgres_summary,
+    postgres_table_preview,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -215,12 +221,31 @@ def price_band(value: Any) -> str:
 
 @st.cache_data
 def load_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    projects, rooms, db_meta = load_latest_snapshot()
+    db_meta: dict[str, Any] = {}
+    if postgres_enabled():
+        try:
+            projects, rooms, pg_meta = load_latest_snapshot_postgres()
+            if not projects.empty and not rooms.empty:
+                return clean_loaded_data(projects, rooms, pg_meta)
+            db_meta = {"postgres": pg_meta}
+        except Exception as exc:
+            db_meta = {"postgres_error": str(exc)}
+
+    projects, rooms, sqlite_meta = load_latest_snapshot()
+    db_meta.update(sqlite_meta)
     if projects.empty or rooms.empty:
         projects = pd.read_csv(PROJECTS_CSV, encoding="utf-8-sig")
         rooms = pd.read_csv(ROOMS_CSV, encoding="utf-8-sig")
-        db_meta = {"source": "csv_fallback"}
+        db_meta.update({"source": "csv_fallback"})
 
+    return clean_loaded_data(projects, rooms, db_meta)
+
+
+def clean_loaded_data(
+    projects: pd.DataFrame,
+    rooms: pd.DataFrame,
+    db_meta: dict[str, Any],
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     for df in [projects, rooms]:
         for col in df.columns:
             if col in NUMERIC_COLUMNS or col.endswith("_uzs") or col.endswith("_usd"):
@@ -1284,8 +1309,9 @@ def render_quality(projects: pd.DataFrame) -> None:
 
 
 def render_database() -> None:
-    st.markdown("### SQLite database")
+    st.markdown("### Database")
     info = database_summary()
+    pg_info = postgres_summary()
     if not info.get("exists"):
         st.info("Database hali yaratilmagan. `python scrape_prices.py` ishga tushganda `data/housing_prices.sqlite` paydo bo'ladi.")
         return
@@ -1301,6 +1327,24 @@ def render_database() -> None:
         metric_card("Project rows", fmt_int(counts.get("projects_history", 0)), "history jadvali")
     with metric_cols[3]:
         metric_card("Room rows", fmt_int(counts.get("room_prices_history", 0)), "history jadvali")
+
+    st.markdown("**PostgreSQL status**")
+    pg_cols = st.columns(4)
+    pg_counts = pg_info.get("counts", {})
+    with pg_cols[0]:
+        status = "Connected" if pg_info.get("connected") else ("Configured" if pg_info.get("enabled") else "Off")
+        metric_card("PostgreSQL", status, pg_info.get("dsn", "POSTGRES_DSN yo'q"))
+    with pg_cols[1]:
+        metric_card("PG snapshots", fmt_int(pg_counts.get("snapshots", 0)), "PostgreSQL history")
+    with pg_cols[2]:
+        metric_card("PG projects", fmt_int(pg_counts.get("projects_history", 0)), "projects_history")
+    with pg_cols[3]:
+        metric_card("PG room rows", fmt_int(pg_counts.get("room_prices_history", 0)), "room_prices_history")
+
+    if pg_info.get("error"):
+        st.warning(f"PostgreSQL ulanish xatosi: {pg_info['error']}")
+    elif not pg_info.get("enabled"):
+        st.info("PostgreSQL uchun `.env` ichida `POSTGRES_DSN` sozlang. Sozlansa dashboard PostgreSQL'dan o'qiydi.")
 
     st.markdown("**Foydalanadigan asosiy SQL viewlar**")
     st.code(
@@ -1388,35 +1432,48 @@ ORDER BY avg_m2_uzs DESC;""",
         '<div class="section-note">Jadval yoki view tanlang: dashboard ichidan SQL natijasini ko\'rasiz va CSV qilib olasiz.</div>',
         unsafe_allow_html=True,
     )
-    table_options = [
+    sqlite_table_options = [
         table
         for table in info.get("tables", [])
         if table in {"snapshots", "projects_history", "room_prices_history", "latest_projects", "latest_room_prices"}
     ]
-    if table_options:
-        explorer_cols = st.columns([1.1, .55, .85])
-        with explorer_cols[0]:
-            selected_table = st.selectbox(
-                "Jadval/view",
-                table_options,
-                index=table_options.index("latest_projects") if "latest_projects" in table_options else 0,
-            )
-        with explorer_cols[1]:
-            row_limit = st.number_input("Limit", min_value=20, max_value=5000, value=300, step=20)
-        with explorer_cols[2]:
-            st.code(f"SELECT * FROM {selected_table} LIMIT {int(row_limit)};", language="sql")
+    postgres_table_options = [
+        table
+        for table in pg_info.get("tables", [])
+        if table in {"snapshots", "projects_history", "room_prices_history", "latest_projects", "latest_room_prices"}
+    ] if pg_info.get("connected") else []
+    storage_options = []
+    if postgres_table_options:
+        storage_options.append("PostgreSQL")
+    if sqlite_table_options:
+        storage_options.append("SQLite")
 
-        with sqlite3.connect(DB_PATH) as conn:
-            preview = pd.read_sql_query(
-                f"SELECT * FROM {quote_identifier(selected_table)} LIMIT ?",
-                conn,
-                params=(int(row_limit),),
-            )
+    if storage_options:
+        source_col, table_col, limit_col = st.columns([.75, 1.1, .55])
+        with source_col:
+            storage = st.selectbox("Storage", storage_options, index=0)
+        table_options = postgres_table_options if storage == "PostgreSQL" else sqlite_table_options
+        default_table = "latest_projects" if "latest_projects" in table_options else table_options[0]
+        with table_col:
+            selected_table = st.selectbox("Jadval/view", table_options, index=table_options.index(default_table))
+        with limit_col:
+            row_limit = st.number_input("Limit", min_value=20, max_value=5000, value=300, step=20)
+
+        st.code(f"SELECT * FROM {selected_table} LIMIT {int(row_limit)};", language="sql")
+        if storage == "PostgreSQL":
+            preview = postgres_table_preview(selected_table, int(row_limit))
+        else:
+            with sqlite3.connect(DB_PATH) as conn:
+                preview = pd.read_sql_query(
+                    f"SELECT * FROM {quote_identifier(selected_table)} LIMIT ?",
+                    conn,
+                    params=(int(row_limit),),
+                )
         st.dataframe(preview, width="stretch", hide_index=True, height=420)
         st.download_button(
             "Tanlangan jadvalni CSV yuklab olish",
             preview.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"{selected_table}.csv",
+            file_name=f"{storage.lower()}_{selected_table}.csv",
             mime="text/csv",
         )
 

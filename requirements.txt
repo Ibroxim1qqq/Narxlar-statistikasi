@@ -4,3 +4,5 @@ beautifulsoup4
 lxml
 plotly
 streamlit
+sqlalchemy
+psycopg[binary]

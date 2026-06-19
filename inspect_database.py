@@ -5,6 +5,7 @@ import sqlite3
 import pandas as pd
 
 from database import DB_PATH, database_summary
+from postgres_database import postgres_summary
 
 
 def main() -> None:
@@ -41,6 +42,15 @@ def main() -> None:
                 conn,
             ).to_string(index=False)
         )
+
+    pg_info = postgres_summary()
+    print("\nPostgreSQL:", pg_info.get("dsn"))
+    print("PostgreSQL connected:", pg_info.get("connected", False))
+    if pg_info.get("error"):
+        print("PostgreSQL error:", pg_info["error"])
+    elif pg_info.get("enabled"):
+        print("PostgreSQL counts:", pg_info.get("counts", {}))
+        print("PostgreSQL latest:", pg_info.get("latest"))
 
 
 if __name__ == "__main__":

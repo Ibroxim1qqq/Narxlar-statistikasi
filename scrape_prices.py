@@ -15,6 +15,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from database import save_snapshot
+from postgres_database import save_snapshot_postgres
 
 
 ROOT = Path(__file__).resolve().parent
@@ -812,6 +813,10 @@ def normalize_and_save(results: list[ScrapeResult]) -> tuple[pd.DataFrame, pd.Da
     }
     db_path = save_snapshot(projects, room_prices, summary)
     summary["database_path"] = str(db_path)
+    try:
+        summary["postgres"] = save_snapshot_postgres(projects, room_prices, summary)
+    except Exception as exc:
+        summary["postgres"] = {"enabled": True, "saved": False, "error": str(exc)}
     (PROCESSED_DIR / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     return projects, room_prices
 
