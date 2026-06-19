@@ -1,5 +1,5 @@
 {
-  "snapshot_utc": "2026-06-19T05:35:38+00:00",
+  "snapshot_utc": "2026-06-19T09:05:58+00:00",
   "projects_total": 1007,
   "room_price_rows_total": 1575,
   "projects_by_source": {
@@ -14,5 +14,6 @@
     "yangiuylar": 401,
     "uysot": 54
   },
-  "projects_with_price": 653
+  "projects_with_price": 653,
+  "database_path": "C:\\Users\\Aslanbek\\Documents\\Yangi Uylar narxlari data\\data\\housing_prices.sqlite"
 }

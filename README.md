@@ -15,7 +15,7 @@ Oddiy Python muhitida:
 
 ```bash
 pip install -r requirements.txt
-python scrape_prices.py
+python daily_update.py
 streamlit run dashboard.py
 ```
 
@@ -24,7 +24,39 @@ streamlit run dashboard.py
 - `data/processed/projects.csv` - turar-joy komplekslari bo'yicha normalizatsiya qilingan jadval.
 - `data/processed/room_prices.csv` - xona/maydon/min narx kesimidagi jadval.
 - `data/processed/summary.json` - snapshot bo'yicha qisqa statistika.
+- `data/housing_prices.sqlite` - tarixiy SQLite baza. Dashboard eng oxirgi snapshotni shu bazadan o'qiydi.
 - `data/raw/` - API/HTMLdan kelgan raw javoblar. Bu papka scraper ishga tushganda qayta hosil bo'ladi va GitHubga kiritilmaydi.
+
+## Database
+
+SQLite baza:
+
+```text
+data/housing_prices.sqlite
+```
+
+Asosiy jadvallar:
+
+```sql
+SELECT * FROM snapshots ORDER BY snapshot_utc DESC;
+SELECT * FROM projects_history;
+SELECT * FROM room_prices_history;
+```
+
+Doim eng oxirgi joriy ma'lumotni ko'rsatadigan viewlar:
+
+```sql
+SELECT * FROM latest_projects;
+SELECT * FROM latest_room_prices;
+```
+
+Terminaldan tez tekshirish:
+
+```bash
+python inspect_database.py
+```
+
+Codex automation har kuni soat 08:00 da `daily_update.py`ni ishga tushirib, bazaga yangi snapshot qo'shadi.
 
 ## Dashboard bo'limlari
 
@@ -59,4 +91,4 @@ Repo GitHubga qo'yilgandan keyin Streamlit Cloud uchun entrypoint:
 dashboard.py
 ```
 
-Data yangilash kerak bo'lsa, lokalda yoki scheduled runnerda `python scrape_prices.py` ishga tushiriladi va `data/processed/` snapshotlari commit qilinadi.
+Data yangilash kerak bo'lsa, lokalda yoki scheduled runnerda `python daily_update.py` ishga tushiriladi va `data/housing_prices.sqlite` hamda `data/processed/` snapshotlari commit qilinadi.

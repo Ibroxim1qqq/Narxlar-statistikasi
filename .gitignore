@@ -6,5 +6,7 @@ venv/
 .env
 .streamlit/secrets.toml
 data/raw/
+*.sqlite-wal
+*.sqlite-shm
 .DS_Store
 Thumbs.db

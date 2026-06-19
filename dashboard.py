@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+
+from database import DB_PATH, database_summary, load_latest_snapshot
 
 
 ROOT = Path(__file__).resolve().parent
@@ -211,9 +214,12 @@ def price_band(value: Any) -> str:
 
 
 @st.cache_data
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    projects = pd.read_csv(PROJECTS_CSV, encoding="utf-8-sig")
-    rooms = pd.read_csv(ROOMS_CSV, encoding="utf-8-sig")
+def load_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    projects, rooms, db_meta = load_latest_snapshot()
+    if projects.empty or rooms.empty:
+        projects = pd.read_csv(PROJECTS_CSV, encoding="utf-8-sig")
+        rooms = pd.read_csv(ROOMS_CSV, encoding="utf-8-sig")
+        db_meta = {"source": "csv_fallback"}
 
     for df in [projects, rooms]:
         for col in df.columns:
@@ -231,7 +237,7 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     projects["source"] = projects["source"].fillna("unknown").str.title()
     rooms["source"] = rooms["source"].fillna("unknown").str.title()
     rooms["room_label"] = rooms["rooms"].apply(room_label)
-    return projects, rooms
+    return projects, rooms, db_meta
 
 
 def room_label(value: Any) -> str:
@@ -1277,6 +1283,69 @@ def render_quality(projects: pd.DataFrame) -> None:
     )
 
 
+def render_database() -> None:
+    st.markdown("### SQLite database")
+    info = database_summary()
+    if not info.get("exists"):
+        st.info("Database hali yaratilmagan. `python scrape_prices.py` ishga tushganda `data/housing_prices.sqlite` paydo bo'ladi.")
+        return
+
+    metric_cols = st.columns(4)
+    counts = info.get("counts", {})
+    latest = info.get("latest")
+    with metric_cols[0]:
+        metric_card("Database", "SQLite", str(DB_PATH))
+    with metric_cols[1]:
+        metric_card("Snapshots", fmt_int(counts.get("snapshots", 0)), "har kuni bittadan qo'shiladi")
+    with metric_cols[2]:
+        metric_card("Project rows", fmt_int(counts.get("projects_history", 0)), "history jadvali")
+    with metric_cols[3]:
+        metric_card("Room rows", fmt_int(counts.get("room_prices_history", 0)), "history jadvali")
+
+    st.markdown("**Foydalanadigan asosiy SQL viewlar**")
+    st.code(
+        """SELECT * FROM latest_projects;
+SELECT * FROM latest_room_prices;
+SELECT * FROM snapshots ORDER BY snapshot_utc DESC;""",
+        language="sql",
+    )
+
+    with sqlite3.connect(DB_PATH) as conn:
+        snapshots = pd.read_sql_query(
+            """
+            SELECT
+                snapshot_utc,
+                projects_total,
+                room_price_rows_total,
+                projects_with_price
+            FROM snapshots
+            ORDER BY snapshot_utc DESC
+            LIMIT 30
+            """,
+            conn,
+        )
+        source_counts = pd.read_sql_query(
+            """
+            SELECT source, COUNT(*) AS projects
+            FROM latest_projects
+            GROUP BY source
+            ORDER BY projects DESC
+            """,
+            conn,
+        )
+
+    left, right = st.columns([1.2, 1])
+    with left:
+        st.markdown("**Oxirgi snapshotlar**")
+        st.dataframe(snapshots, use_container_width=True, hide_index=True)
+    with right:
+        st.markdown("**Latest snapshot source coverage**")
+        st.dataframe(source_counts, use_container_width=True, hide_index=True)
+
+    if latest:
+        st.caption(f"Latest snapshot: `{latest[1]}`. DB fayl: `{DB_PATH}`")
+
+
 def main() -> None:
     apply_theme()
 
@@ -1284,14 +1353,14 @@ def main() -> None:
         st.error("Avval `python scrape_prices.py` ni ishga tushiring.")
         st.stop()
 
-    projects, rooms = load_data()
+    projects, rooms, db_meta = load_data()
     render_header(projects)
 
     if projects.empty and rooms.empty:
         st.warning("Data topilmadi. Avval scraper ishga tushiring.")
         return
 
-    tabs = st.tabs(["Umumiy", "Shaharlar", "Tumanlar", "Xonalar", "Xarita", "Loyihalar", "Data quality"])
+    tabs = st.tabs(["Umumiy", "Shaharlar", "Tumanlar", "Xonalar", "Xarita", "Loyihalar", "Data quality", "Database"])
     with tabs[0]:
         render_overview(projects, rooms)
     with tabs[1]:
@@ -1306,10 +1375,12 @@ def main() -> None:
         render_projects(projects)
     with tabs[6]:
         render_quality(projects)
+    with tabs[7]:
+        render_database()
 
     st.caption(
-        "Data files: data/processed/projects.csv va data/processed/room_prices.csv. "
-        "Raw API/HTML javoblar data/raw papkasida saqlangan."
+        "Dashboard latest data'ni SQLite bazadagi latest_projects/latest_room_prices viewlaridan o'qiydi. "
+        "CSV fayllar fallback/export uchun saqlanadi."
     )
 
 

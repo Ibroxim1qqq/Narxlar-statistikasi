@@ -14,6 +14,8 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+from database import save_snapshot
+
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
@@ -808,6 +810,8 @@ def normalize_and_save(results: list[ScrapeResult]) -> tuple[pd.DataFrame, pd.Da
         "room_rows_by_source": room_prices["source"].value_counts(dropna=False).to_dict() if not room_prices.empty else {},
         "projects_with_price": int(projects["price_available"].fillna(False).sum()) if not projects.empty else 0,
     }
+    db_path = save_snapshot(projects, room_prices, summary)
+    summary["database_path"] = str(db_path)
     (PROCESSED_DIR / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     return projects, room_prices
 
