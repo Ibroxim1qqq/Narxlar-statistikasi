@@ -1,0 +1,60 @@
+# O'zbekiston yangi uylar narxlari dashboardi
+
+Bu loyiha hozirgi bozor snapshotini yig'adi va dashboardga chiqaradi.
+
+## Ishga tushirish
+
+```powershell
+& "C:\Users\Aslanbek\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scrape_prices.py
+& "C:\Users\Aslanbek\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m streamlit run dashboard.py
+```
+
+Oddiy Python muhitida:
+
+```bash
+pip install -r requirements.txt
+python scrape_prices.py
+streamlit run dashboard.py
+```
+
+## Chiqadigan fayllar
+
+- `data/processed/projects.csv` - turar-joy komplekslari bo'yicha normalizatsiya qilingan jadval.
+- `data/processed/room_prices.csv` - xona/maydon/min narx kesimidagi jadval.
+- `data/processed/summary.json` - snapshot bo'yicha qisqa statistika.
+- `data/raw/` - API/HTMLdan kelgan raw javoblar. Bu papka scraper ishga tushganda qayta hosil bo'ladi va GitHubga kiritilmaydi.
+
+## Dashboard bo'limlari
+
+- `Executive` - KPI, coverage, premium tuman va xona benchmarklari.
+- `Shaharlar` - shahar/viloyat bo'yicha median m2 narx va volume.
+- `Tumanlar` - premium/value zonalar va narx-volume matritsasi.
+- `Xonalar` - xona soni bo'yicha ticket size, maydon va m2 dispersiyasi.
+- `Geo` - latitude/longitude bor loyihalarni xaritada ko'rish.
+- `Loyihalar` - loyiha-level jadval, sort, search va CSV export.
+- `Data quality` - manba coverage, missing fields va caveatlar.
+
+## Manbalar
+
+- Uysot: `https://uysot.uz/uz/uzbekistan/novostroyki`
+- Salomuy: `https://salomuy.uz/`
+- Yangiuylar: `https://yangiuylar.uz/objects/building`
+- Domtut: `https://domtut.uz/uz/catalog-nedvijimosty`
+
+## Eski data qayerdan olinadi?
+
+1. O'z scraperimizni har kuni/haftada ishga tushirib, `snapshot_utc` bilan arxiv qilish.
+2. Domtut sahifalaridagi bozor statistikasi bloklari, chunki u yerda oy va foiz o'zgarishlari ko'rinadi.
+3. Wayback Machine sahifa snapshotlari, ayniqsa katalog va loyiha sahifalari uchun.
+4. Markaziy bank kurslari va rasmiy statistika manbalari bilan narxlarni real/valyuta kesimida deflyatsiya qilish.
+5. Quruvchilarning rasmiy price-listlari va Telegram/Instagram postlari. Buni alohida media-scraper bilan yig'ish kerak.
+
+## GitHub / Streamlit Cloud
+
+Repo GitHubga qo'yilgandan keyin Streamlit Cloud uchun entrypoint:
+
+```text
+dashboard.py
+```
+
+Data yangilash kerak bo'lsa, lokalda yoki scheduled runnerda `python scrape_prices.py` ishga tushiriladi va `data/processed/` snapshotlari commit qilinadi.

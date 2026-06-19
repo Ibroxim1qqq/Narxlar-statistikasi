@@ -1,0 +1,18 @@
+{
+  "snapshot_utc": "2026-06-19T05:35:38+00:00",
+  "projects_total": 1007,
+  "room_price_rows_total": 1575,
+  "projects_by_source": {
+    "salomuy": 532,
+    "domtut": 297,
+    "yangiuylar": 158,
+    "uysot": 20
+  },
+  "room_rows_by_source": {
+    "domtut": 709,
+    "salomuy": 411,
+    "yangiuylar": 401,
+    "uysot": 54
+  },
+  "projects_with_price": 653
+}
