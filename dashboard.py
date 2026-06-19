@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from html import escape
@@ -24,6 +25,7 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data" / "processed"
 PROJECTS_CSV = DATA_DIR / "projects.csv"
 ROOMS_CSV = DATA_DIR / "room_prices.csv"
+SUMMARY_JSON = DATA_DIR / "summary.json"
 
 NUMERIC_COLUMNS = {
     "price_total_min_uzs",
@@ -239,6 +241,16 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
         db_meta.update({"source": "csv_fallback"})
 
     return clean_loaded_data(projects, rooms, db_meta)
+
+
+@st.cache_data
+def load_summary() -> dict[str, Any]:
+    if not SUMMARY_JSON.exists():
+        return {}
+    try:
+        return json.loads(SUMMARY_JSON.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 def clean_loaded_data(
@@ -1261,6 +1273,52 @@ def render_quality(projects: pd.DataFrame) -> None:
                 "districts": "Tuman",
             },
         )
+
+    summary = load_summary()
+    location_quality = summary.get("location_quality", {})
+    if location_quality:
+        st.markdown("### Location QA")
+        location_cols = st.columns(4)
+        with location_cols[0]:
+            metric_card(
+                "Raw projects",
+                fmt_int(location_quality.get("projects_before_location_filter")),
+                "scraperdan kelgan jami loyiha",
+            )
+        with location_cols[1]:
+            metric_card(
+                "Valid projects",
+                fmt_int(len(projects)),
+                "city+district tekshiruvdan o'tgan",
+            )
+        with location_cols[2]:
+            metric_card(
+                "Dropped anomalies",
+                fmt_int(location_quality.get("projects_dropped_invalid_location", 0)),
+                "noto'g'ri yoki ishonchsiz lokatsiya",
+            )
+        with location_cols[3]:
+            metric_card(
+                "Bad locations in DB",
+                fmt_int(int((~projects.get("location_valid", pd.Series(True, index=projects.index))).sum())),
+                "0 bo'lishi kerak",
+            )
+
+        issues = location_quality.get("project_location_issues", {})
+        if issues:
+            issue_frame = pd.DataFrame(
+                [{"issue": issue, "rows": rows} for issue, rows in issues.items()]
+            ).sort_values("rows", ascending=False)
+            fig = px.bar(
+                issue_frame,
+                x="rows",
+                y="issue",
+                orientation="h",
+                color_discrete_sequence=["#0f766e"],
+                title="Location cleaning natijasi",
+                labels={"rows": "Loyiha", "issue": ""},
+            )
+            st.plotly_chart(polish(fig, 300), width="stretch")
 
     missing = pd.DataFrame(
         {

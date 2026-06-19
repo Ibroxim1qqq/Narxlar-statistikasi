@@ -84,6 +84,8 @@ PostgreSQL sozlangan bo'lsa, scraper snapshotni SQLite bilan birga PostgreSQL'ga
 
 Dashboard ichidagi `Database` tabda `snapshots`, `latest_projects`, `latest_room_prices`, `projects_history` va `room_prices_history` jadvallarini ko'rish hamda CSV qilib yuklab olish mumkin.
 
+Location QA qoidasi: city/district jufti valid ro'yxatdan o'tmasa yoki mahalla/TJM/aholi punkti kabi ishonchsiz lokatsiya kelsa, u loyiha dashboard va bazadagi latest snapshotdan chiqariladi. `Data quality` sahifasida nechta anomaly chiqarilgani ko'rinadi.
+
 `daily_update.py` bir kunda bitta snapshot saqlaydi: o'sha Asia/Tashkent sanasida qayta ishga tushsa, shu kun yozuvini yangilaydi. Windows Task Scheduler har kuni soat 10:00 da `daily_update.py`ni ishga tushirib, bazaga yangi snapshot qo'shadi. Kompyuterning o'zida qayta o'rnatish uchun:
 
 ```powershell

@@ -716,20 +716,287 @@ DISTRICT_MAP = {
 }
 
 
-def normalize_city(value: Any) -> str | None:
+CITY_MAP.update(
+    {
+        "Ташкент": "Toshkent shahri",
+        "город Ташкент": "Toshkent shahri",
+        "Город Ташкент": "Toshkent shahri",
+        "Ташкентская область": "Toshkent viloyati",
+        "Ташкенсткая область": "Toshkent viloyati",
+        "Андижанская область": "Andijon viloyati",
+        "Бухарская область": "Buxoro viloyati",
+        "Джизакская область": "Jizzax viloyati",
+        "Джиззакская область": "Jizzax viloyati",
+        "Кашкадарьинская область": "Qashqadaryo viloyati",
+        "Навоийская область": "Navoiy viloyati",
+        "Наманганская область": "Namangan viloyati",
+        "Самаркандская область": "Samarqand viloyati",
+        "Самарқанд вилояти": "Samarqand viloyati",
+        "Сирдарьинская область": "Sirdaryo viloyati",
+        "Сурхандарьинская область": "Surxondaryo viloyati",
+        "Ферганская область": "Farg'ona viloyati",
+        "Хорезмская область": "Xorazm viloyati",
+        "Qoraqalpogâ€˜iston Respublikasi": "Qoraqalpog'iston Respublikasi",
+    }
+)
+
+
+DISTRICT_MAP.update(
+    {
+        "Алмазарский район": "Olmazor tumani",
+        "Бектемирский район": "Bektemir tumani",
+        "Мирабадский район": "Mirobod tumani",
+        "Мирзо-Улугбекский район": "Mirzo Ulug'bek tumani",
+        "Сергелийский район": "Sergeli tumani",
+        "Учтепинский район": "Uchtepa tumani",
+        "Шайхантахурский район": "Shayxontohur tumani",
+        "Чиланзарский район": "Chilonzor tumani",
+        "Юнусабадский район": "Yunusobod tumani",
+        "Яккасарайский район": "Yakkasaroy tumani",
+        "Янгихаятский район": "Yangihayot tumani",
+        "Яшнабадский район": "Yashnobod tumani",
+        "Chilonzor": "Chilonzor tumani",
+        "Bektemir": "Bektemir tumani",
+        "Olmazor": "Olmazor tumani",
+        "Zangiota": "Zangiota tumani",
+        "Sirg'ali tumani": "Sergeli tumani",
+        "Chirchiq shahar": "Chirchiq shahri",
+        "Зангиатинский район": "Zangiota tumani",
+        "Ташкентский район": "Toshkent tumani",
+        "Бостанлыкский район": "Bo'stonliq tumani",
+        "Бостанлыксий район": "Bo'stonliq tumani",
+        "Кибрайский район": "Qibray tumani",
+        "Юкоричирчикский район": "Yuqorichirchiq tumani",
+        "Юкарычирчикский район": "Yuqorichirchiq tumani",
+        "Куйичирчикский район": "Quyi Chirchiq tumani",
+        "Янгиюльский район": "Yangiyo'l tumani",
+        "Бекабадский район": "Bekobod tumani",
+        "Пскентский район": "Piskent tumani",
+        "город Ангрен": "Angren shahri",
+        "город Алмалык": "Olmaliq shahri",
+        "город Бекабад": "Bekobod shahri",
+        "город Нурафшан": "Nurafshon shahri",
+        "город Нуравшан": "Nurafshon shahri",
+        "город Янгиюль": "Yangiyo'l shahri",
+        "город Чирчик": "Chirchiq shahri",
+        "Келес": "Toshkent tumani",
+        "Андижанский район": "Andijon tumani",
+        "Асакинский район": "Asaka tumani",
+        "Жалакудукский район": "Jalaquduq tumani",
+        "Гиждуванский район": "G'ijduvon tumani",
+        "город Фергана": "Farg'ona shahri",
+        "город Коканд": "Qo'qon shahri",
+        "город Маргилан": "Marg'ilon shahri",
+        "Карманинский район": "Karmana tumani",
+        "Учкудукский район": "Uchquduq tumani",
+        "город Самарканд": "Samarqand shahri",
+        "Самаркандский район": "Samarqand tumani",
+        "Самарқанд тумани": "Samarqand tumani",
+        "Тайлоқ тумани": "Tayloq tumani",
+        "Ургутский район": "Urgut tumani",
+        "Зааминский район": "Zomin tumani",
+        "город Джизак": "Jizzax shahri",
+        "город Джиззак": "Jizzax shahri",
+        "город Карши": "Qarshi shahri",
+        "Денауский район": "Denov tumani",
+        "город Термез": "Termiz shahri",
+        "город Ургенч": "Urganch shahri",
+    }
+)
+
+
+VALID_CITY_VALUES = {
+    "Andijon viloyati",
+    "Buxoro viloyati",
+    "Farg'ona viloyati",
+    "Jizzax viloyati",
+    "Namangan viloyati",
+    "Navoiy viloyati",
+    "Qashqadaryo viloyati",
+    "Qoraqalpog'iston Respublikasi",
+    "Samarqand viloyati",
+    "Sirdaryo viloyati",
+    "Surxondaryo viloyati",
+    "Toshkent shahri",
+    "Toshkent viloyati",
+    "Xorazm viloyati",
+}
+
+
+VALID_DISTRICTS_BY_CITY = {
+    "Toshkent shahri": {
+        "Bektemir tumani",
+        "Chilonzor tumani",
+        "Mirobod tumani",
+        "Mirzo Ulug'bek tumani",
+        "Olmazor tumani",
+        "Sergeli tumani",
+        "Shayxontohur tumani",
+        "Uchtepa tumani",
+        "Yakkasaroy tumani",
+        "Yangihayot tumani",
+        "Yashnobod tumani",
+        "Yunusobod tumani",
+    },
+    "Toshkent viloyati": {
+        "Angren shahri",
+        "Bekobod shahri",
+        "Bekobod tumani",
+        "Bo'stonliq tumani",
+        "Chirchiq shahri",
+        "Nurafshon shahri",
+        "Olmaliq shahri",
+        "Piskent tumani",
+        "Qibray tumani",
+        "Quyi Chirchiq tumani",
+        "Toshkent tumani",
+        "Yangiyo'l shahri",
+        "Yangiyo'l tumani",
+        "Yuqorichirchiq tumani",
+        "Zangiota tumani",
+    },
+    "Andijon viloyati": {"Andijon shahri", "Andijon tumani", "Asaka tumani", "Jalaquduq tumani"},
+    "Buxoro viloyati": {"Buxoro shahri", "G'ijduvon tumani"},
+    "Farg'ona viloyati": {"Farg'ona shahri", "Marg'ilon shahri", "Qo'qon shahri"},
+    "Jizzax viloyati": {"Jizzax shahri", "Zomin tumani"},
+    "Namangan viloyati": {"Namangan shahri"},
+    "Navoiy viloyati": {
+        "Karmana tumani",
+        "Navoiy shahri",
+        "Qiziltepa tumani",
+        "Uchquduq tumani",
+        "Zarafshon shahri",
+    },
+    "Qashqadaryo viloyati": {"Qarshi shahri"},
+    "Samarqand viloyati": {
+        "Kattaqurg'on tumani",
+        "Samarqand shahri",
+        "Samarqand tumani",
+        "Tayloq tumani",
+        "Urgut tumani",
+    },
+    "Sirdaryo viloyati": {"Guliston shahri"},
+    "Surxondaryo viloyati": {"Denov tumani", "Termiz shahri"},
+    "Xorazm viloyati": {"Urganch shahri"},
+}
+
+
+DISTRICT_TO_CITY = {
+    district: city
+    for city, districts in VALID_DISTRICTS_BY_CITY.items()
+    for district in districts
+}
+
+
+LOCAL_CITY_TO_LOCATION = {
+    "Chirchiq": ("Toshkent viloyati", "Chirchiq shahri"),
+    "Jizzax": ("Jizzax viloyati", "Jizzax shahri"),
+    "Qarshi": ("Qashqadaryo viloyati", "Qarshi shahri"),
+    "Qiziltepa": ("Navoiy viloyati", "Qiziltepa tumani"),
+    "Yangiyo'l": ("Toshkent viloyati", "Yangiyo'l shahri"),
+}
+
+
+ANOMALY_LOCATION_TOKENS = (
+    "aholi punkti",
+    "mahalla",
+    "mahalla fuqarolar",
+    "tjm",
+    "mitti",
+    "пос.",
+    "mfy",
+    "мфй",
+)
+
+
+def normalize_location_text(value: Any) -> str | None:
     text = clean_text(value)
     if not text:
         return None
-    text = text.replace("`", "'").replace("‘", "'").replace("’", "'").replace("ʻ", "'").replace("ʼ", "'")
+    return (
+        text.replace("`", "'")
+        .replace("‘", "'")
+        .replace("’", "'")
+        .replace("ʻ", "'")
+        .replace("ʼ", "'")
+        .replace("â€˜", "'")
+        .replace("â€™", "'")
+    )
+
+
+def is_location_anomaly(value: Any) -> bool:
+    text = normalize_location_text(value)
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(token in lowered for token in ANOMALY_LOCATION_TOKENS)
+
+
+def normalize_city(value: Any) -> str | None:
+    text = normalize_location_text(value)
+    if not text:
+        return None
     return CITY_MAP.get(text, text)
 
 
 def normalize_district(value: Any) -> str | None:
-    text = clean_text(value)
+    text = normalize_location_text(value)
     if not text:
         return None
-    text = text.replace("`", "'").replace("‘", "'").replace("’", "'").replace("ʻ", "'").replace("ʼ", "'")
     return DISTRICT_MAP.get(text, text)
+
+
+def normalize_location_pair(city_value: Any, district_value: Any) -> tuple[str | None, str | None, bool, str]:
+    raw_city = normalize_location_text(city_value)
+    raw_district = normalize_location_text(district_value)
+    city = normalize_city(raw_city)
+    district = normalize_district(raw_district)
+
+    if raw_city in LOCAL_CITY_TO_LOCATION:
+        city, inferred_district = LOCAL_CITY_TO_LOCATION[raw_city]
+        if not district or is_location_anomaly(raw_district) or district not in DISTRICT_TO_CITY:
+            district = inferred_district
+
+    if district in DISTRICT_TO_CITY:
+        expected_city = DISTRICT_TO_CITY[district]
+        if city != expected_city:
+            city = expected_city
+        return city, district, True, "ok"
+
+    if is_location_anomaly(district):
+        district = None
+
+    if city not in VALID_CITY_VALUES:
+        return None, None, False, "invalid_city"
+
+    if district:
+        return city, None, False, "district_removed"
+
+    return city, None, False, "city_only"
+
+
+def clean_location_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
+    if frame.empty or "city" not in frame.columns or "district" not in frame.columns:
+        return frame, {}
+
+    cleaned = frame.copy()
+    cities = []
+    districts = []
+    valid_flags = []
+    issues = []
+    for city_value, district_value in zip(cleaned["city"], cleaned["district"]):
+        city, district, valid, issue = normalize_location_pair(city_value, district_value)
+        cities.append(city)
+        districts.append(district)
+        valid_flags.append(valid)
+        issues.append(issue)
+
+    cleaned["city"] = cities
+    cleaned["district"] = districts
+    cleaned["location_valid"] = valid_flags
+    cleaned["location_issue"] = issues
+    issue_counts = cleaned["location_issue"].value_counts(dropna=False).to_dict()
+    return cleaned, {str(key): int(value) for key, value in issue_counts.items()}
 
 
 def enrich_project_prices(projects: pd.DataFrame) -> pd.DataFrame:
@@ -783,17 +1050,35 @@ def normalize_and_save(results: list[ScrapeResult]) -> tuple[pd.DataFrame, pd.Da
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     projects = pd.DataFrame([row for result in results for row in result.projects])
     room_prices = pd.DataFrame([row for result in results for row in result.room_prices])
+    location_summary: dict[str, Any] = {
+        "projects_before_location_filter": int(len(projects)),
+        "room_rows_before_location_filter": int(len(room_prices)),
+        "project_location_issues": {},
+        "room_location_issues": {},
+        "projects_dropped_invalid_location": 0,
+        "room_rows_dropped_invalid_location": 0,
+    }
 
     if not projects.empty:
-        projects["city"] = projects["city"].apply(normalize_city)
-        projects["district"] = projects["district"].apply(normalize_district)
+        projects, project_location_issues = clean_location_frame(projects)
+        location_summary["project_location_issues"] = project_location_issues
+        before_filter = len(projects)
+        projects = projects[projects["location_valid"]].copy()
+        location_summary["projects_dropped_invalid_location"] = int(before_filter - len(projects))
         projects = enrich_project_prices(projects)
         projects = projects.drop_duplicates(subset=["source", "source_id"], keep="first")
         projects = projects.sort_values(["source", "city", "district", "project_name"], na_position="last")
     if not room_prices.empty:
-        room_prices["city"] = room_prices["city"].apply(normalize_city)
-        room_prices["district"] = room_prices["district"].apply(normalize_district)
+        room_prices, room_location_issues = clean_location_frame(room_prices)
+        location_summary["room_location_issues"] = room_location_issues
         room_prices = sanitize_room_prices(room_prices)
+        before_filter = len(room_prices)
+        if not projects.empty:
+            valid_project_keys = set(zip(projects["source"], projects["source_id"].astype(str)))
+            room_keys = list(zip(room_prices["source"], room_prices["source_id"].astype(str)))
+            room_prices = room_prices[[key in valid_project_keys for key in room_keys]].copy()
+        room_prices = room_prices[room_prices["location_valid"]].copy()
+        location_summary["room_rows_dropped_invalid_location"] = int(before_filter - len(room_prices))
         room_prices = room_prices.drop_duplicates(
             subset=["source", "source_id", "rooms", "min_area_sqm", "min_total_price_uzs", "min_total_price_usd"],
             keep="first",
@@ -810,6 +1095,7 @@ def normalize_and_save(results: list[ScrapeResult]) -> tuple[pd.DataFrame, pd.Da
         "projects_by_source": projects["source"].value_counts(dropna=False).to_dict() if not projects.empty else {},
         "room_rows_by_source": room_prices["source"].value_counts(dropna=False).to_dict() if not room_prices.empty else {},
         "projects_with_price": int(projects["price_available"].fillna(False).sum()) if not projects.empty else 0,
+        "location_quality": location_summary,
     }
     db_path = save_snapshot(projects, room_prices, summary)
     summary["database_path"] = str(db_path)
