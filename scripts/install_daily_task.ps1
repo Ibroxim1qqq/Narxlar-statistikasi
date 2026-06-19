@@ -13,7 +13,7 @@ $Action = New-ScheduledTaskAction `
     -Execute $PowerShell `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Runner`"" `
     -WorkingDirectory $ProjectRoot
-$Trigger = New-ScheduledTaskTrigger -Daily -At 08:00
+$Trigger = New-ScheduledTaskTrigger -Daily -At 10:00
 $Settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -AllowStartIfOnBatteries `
@@ -30,9 +30,9 @@ Register-ScheduledTask `
     -Trigger $Trigger `
     -Settings $Settings `
     -Principal $Principal `
-    -Description "Scrapes Uzbekistan new housing prices into data\housing_prices.sqlite every day at 08:00." `
+    -Description "Scrapes Uzbekistan new housing prices into data\housing_prices.sqlite every day at 10:00." `
     -Force | Out-Null
 
 Write-Output "Installed task: $TaskName"
-Write-Output "Schedule: daily at 08:00"
+Write-Output "Schedule: daily at 10:00"
 Write-Output "Runner: $Runner"

@@ -84,7 +84,7 @@ PostgreSQL sozlangan bo'lsa, scraper snapshotni SQLite bilan birga PostgreSQL'ga
 
 Dashboard ichidagi `Database` tabda `snapshots`, `latest_projects`, `latest_room_prices`, `projects_history` va `room_prices_history` jadvallarini ko'rish hamda CSV qilib yuklab olish mumkin.
 
-`daily_update.py` bir kunda bitta snapshot saqlaydi: o'sha Asia/Tashkent sanasida qayta ishga tushsa, shu kun yozuvini yangilaydi. Codex automation har kuni soat 08:00 da `daily_update.py`ni ishga tushirib, bazaga yangi snapshot qo'shadi. Kompyuterning o'zida Windows Task Scheduler orqali ham o'rnatish uchun:
+`daily_update.py` bir kunda bitta snapshot saqlaydi: o'sha Asia/Tashkent sanasida qayta ishga tushsa, shu kun yozuvini yangilaydi. Windows Task Scheduler har kuni soat 10:00 da `daily_update.py`ni ishga tushirib, bazaga yangi snapshot qo'shadi. Kompyuterning o'zida qayta o'rnatish uchun:
 
 ```powershell
 .\scripts\install_daily_task.ps1
