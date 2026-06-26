@@ -40,6 +40,17 @@ function Invoke-NativeCapture {
     }
 }
 
+function Write-LogLines {
+    param(
+        [Parameter(Mandatory = $false)][string[]]$Lines = @()
+    )
+
+    foreach ($Line in $Lines) {
+        Add-Content -Path $LogFile -Value $Line
+        Write-Host $Line
+    }
+}
+
 function Invoke-NativeLogged {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -48,7 +59,7 @@ function Invoke-NativeLogged {
 
     $Result = Invoke-NativeCapture -FilePath $FilePath -ArgumentList $ArgumentList
     if ($Result.Lines.Count -gt 0) {
-        $Result.Lines | Tee-Object -FilePath $LogFile -Append | Out-Host
+        Write-LogLines -Lines $Result.Lines
     }
     return $Result.ExitCode
 }
@@ -59,18 +70,18 @@ Set-Location $ProjectRoot
 Write-Output ("Started daily update at {0}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) | Tee-Object -FilePath $LogFile
 Write-Output "Checking Python dependencies..." | Tee-Object -FilePath $LogFile -Append
 $DependencyCheck = "import importlib.util, sys; missing=[m for m in ('pandas','requests','bs4','lxml','plotly','streamlit','sqlalchemy','psycopg') if importlib.util.find_spec(m) is None]; print('Missing dependencies:', ', '.join(missing) if missing else 'none'); sys.exit(1 if missing else 0)"
-& $Python -c $DependencyCheck 2>&1 | Tee-Object -FilePath $LogFile -Append
-if ($LASTEXITCODE -ne 0) {
+$DependencyResult = Invoke-NativeCapture -FilePath $Python -ArgumentList @("-c", $DependencyCheck)
+Write-LogLines -Lines $DependencyResult.Lines
+if ($DependencyResult.ExitCode -ne 0) {
     Write-Output "Installing Python dependencies from requirements.txt..." | Tee-Object -FilePath $LogFile -Append
-    & $Python -m pip install -r "requirements.txt" --no-input 2>&1 | Tee-Object -FilePath $LogFile -Append
-    if ($LASTEXITCODE -ne 0) {
-        $ExitCode = $LASTEXITCODE
+    $PipCode = Invoke-NativeLogged -FilePath $Python -ArgumentList @("-m", "pip", "install", "-r", "requirements.txt", "--no-input")
+    if ($PipCode -ne 0) {
+        $ExitCode = $PipCode
         Write-Output ("Finished daily update with exit code {0} at {1}" -f $ExitCode, (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) | Tee-Object -FilePath $LogFile -Append
         exit $ExitCode
     }
 }
-& $Python "daily_update.py" 2>&1 | Tee-Object -FilePath $LogFile -Append
-$ExitCode = $LASTEXITCODE
+$ExitCode = Invoke-NativeLogged -FilePath $Python -ArgumentList @("daily_update.py")
 if ($ExitCode -eq 0) {
     $Git = Resolve-Git
     $TrackedDataFiles = @("data/housing_prices.sqlite", "data/processed/projects.csv", "data/processed/room_prices.csv", "data/processed/summary.json")
