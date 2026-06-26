@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
+import subprocess
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,7 @@ import streamlit as st
 from database import DB_PATH, database_summary, load_latest_snapshot, quote_identifier
 from postgres_database import (
     load_latest_snapshot_postgres,
+    load_local_env,
     postgres_enabled,
     postgres_summary,
     postgres_table_preview,
@@ -26,6 +29,9 @@ DATA_DIR = ROOT / "data" / "processed"
 PROJECTS_CSV = DATA_DIR / "projects.csv"
 ROOMS_CSV = DATA_DIR / "room_prices.csv"
 SUMMARY_JSON = DATA_DIR / "summary.json"
+LOG_DIR = ROOT / "data" / "logs"
+PYTHON_EXE = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python" / "python.exe"
+TASK_NAME = "Narxlar Statistikasi Daily Update"
 
 NUMERIC_COLUMNS = {
     "price_total_min_uzs",
@@ -273,6 +279,19 @@ def clean_loaded_data(
     projects["price_band"] = projects["price_per_sqm_min_uzs"].apply(price_band)
     projects["source"] = projects["source"].fillna("unknown").str.title()
     rooms["source"] = rooms["source"].fillna("unknown").str.title()
+    for df in [projects, rooms]:
+        if "source_freshness" not in df.columns:
+            df["source_freshness"] = "live"
+        else:
+            df["source_freshness"] = df["source_freshness"].fillna("live")
+        if "source_error" not in df.columns:
+            df["source_error"] = None
+        if "cached_snapshot_utc" not in df.columns:
+            df["cached_snapshot_utc"] = None
+        if "location_valid" not in df.columns:
+            df["location_valid"] = True
+        if "location_issue" not in df.columns:
+            df["location_issue"] = "ok"
     rooms["room_label"] = rooms["rooms"].apply(room_label)
     return projects, rooms, db_meta
 
@@ -348,6 +367,90 @@ def insight_card(title: str, body: str, note: str = "") -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def app_credentials() -> dict[str, dict[str, str]]:
+    load_local_env()
+    return {
+        "admin": {
+            "username": os.getenv("APP_ADMIN_USERNAME", "admin"),
+            "password": os.getenv("APP_ADMIN_PASSWORD", "admin123"),
+            "label": "Admin",
+        },
+        "user": {
+            "username": os.getenv("APP_USER_USERNAME", "user"),
+            "password": os.getenv("APP_USER_PASSWORD", "user123"),
+            "label": "User",
+        },
+    }
+
+
+def authenticate(role: str, username: str, password: str) -> bool:
+    creds = app_credentials()[role]
+    return username == creds["username"] and password == creds["password"]
+
+
+def render_login_page() -> bool:
+    auto_role = os.getenv("APP_AUTO_LOGIN_ROLE")
+    if auto_role in {"admin", "user"} and not st.session_state.get("authenticated"):
+        st.session_state["authenticated"] = True
+        st.session_state["role"] = auto_role
+        st.session_state["username"] = app_credentials()[auto_role]["username"]
+
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.markdown(
+        """
+        <div class="hero-band">
+            <div class="eyebrow">Secure market intelligence</div>
+            <h1>Narxlar statistikasi platformasi</h1>
+            <div class="hero-text">
+                User dashboard professional bozor ko'rsatkichlarini beradi. Admin panel database, scraper,
+                scheduler va data quality nazoratini boshqaradi.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    left, right = st.columns([1, 1.15])
+    with left:
+        st.markdown("### Kirish")
+        with st.form("login_form"):
+            role_label = st.radio("Rol", ["User", "Admin"], horizontal=True)
+            role = role_label.lower()
+            username = st.text_input("Login")
+            password = st.text_input("Parol", type="password")
+            submitted = st.form_submit_button("Kirish", use_container_width=True)
+        if submitted:
+            if authenticate(role, username.strip(), password):
+                st.session_state["authenticated"] = True
+                st.session_state["role"] = role
+                st.session_state["username"] = username.strip()
+                st.rerun()
+            else:
+                st.error("Login yoki parol noto'g'ri.")
+    with right:
+        st.markdown("### Rollar")
+        role_cols = st.columns(2)
+        with role_cols[0]:
+            metric_card("User", "Analytics", "bozor KPI, shahar, tuman, xona va xarita")
+        with role_cols[1]:
+            metric_card("Admin", "Control", "database, scraper, scheduler, log va QA")
+        st.info("Default lokal kirish: `user / user123` yoki `admin / admin123`. Productionda `.env` orqali almashtiring.")
+    return False
+
+
+def render_shell(role: str, db_meta: dict[str, Any]) -> None:
+    with st.sidebar:
+        st.markdown("### Narxlar statistikasi")
+        st.caption(f"Rol: **{role.title()}**")
+        storage = db_meta.get("storage", "sqlite/csv")
+        st.caption(f"Storage: `{storage}`")
+        if st.button("Chiqish", use_container_width=True):
+            for key in ["authenticated", "role", "username"]:
+                st.session_state.pop(key, None)
+            st.rerun()
 
 
 def polish(fig: go.Figure, height: int = 440) -> go.Figure:
@@ -558,6 +661,8 @@ def overview_cards(projects: pd.DataFrame, rooms: pd.DataFrame, quality_scope: p
     scope_total = len(quality_scope)
     priced_count = int(quality_scope["has_price"].sum()) if not quality_scope.empty else 0
     coverage = priced_count / scope_total if scope_total else float("nan")
+    cached_count = int(projects["source_freshness"].eq("cached").sum()) if "source_freshness" in projects else 0
+    freshness_note = f"{fmt_int(cached_count)} cached fallback" if cached_count else "barcha manbalar live"
 
     avg_sqm = projects["price_per_sqm_min_uzs"].mean()
     median_total = projects["price_total_min_uzs"].median()
@@ -569,7 +674,7 @@ def overview_cards(projects: pd.DataFrame, rooms: pd.DataFrame, quality_scope: p
 
     first_row = st.columns(4)
     with first_row[0]:
-        metric_card("Loyihalar", fmt_int(len(projects)), f"narx coverage {fmt_pct(coverage)}")
+        metric_card("Loyihalar", fmt_int(len(projects)), f"coverage {fmt_pct(coverage)} · {freshness_note}")
     with first_row[1]:
         metric_card("O'rtacha m2 narx", fmt_money(avg_sqm), "narxi bor loyihalar bo'yicha")
     with first_row[2]:
@@ -1539,21 +1644,173 @@ ORDER BY avg_m2_uzs DESC;""",
         st.caption(f"Latest snapshot: `{latest[1]}`. DB fayl: `{DB_PATH}`")
 
 
-def main() -> None:
-    apply_theme()
+def run_command(command: list[str], timeout: int = 300) -> tuple[int, str]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+        return result.returncode, (result.stdout or "") + (result.stderr or "")
+    except Exception as exc:
+        return 1, str(exc)
 
-    if not PROJECTS_CSV.exists() or not ROOMS_CSV.exists():
-        st.error("Avval `python scrape_prices.py` ni ishga tushiring.")
-        st.stop()
 
-    projects, rooms, db_meta = load_data()
-    render_header(projects)
+def powershell_json(script: str) -> Any:
+    code, output = run_command(
+        ["powershell", "-NoProfile", "-Command", f"{script} | ConvertTo-Json -Depth 4"],
+        timeout=30,
+    )
+    if code != 0 or not output.strip():
+        return {"error": output.strip() or f"exit {code}"}
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return {"raw": output}
 
-    if projects.empty and rooms.empty:
-        st.warning("Data topilmadi. Avval scraper ishga tushiring.")
+
+def scheduler_info() -> dict[str, Any]:
+    data = powershell_json(
+        f"Get-ScheduledTaskInfo -TaskName {json.dumps(TASK_NAME)} | "
+        "Select-Object LastRunTime,LastTaskResult,NextRunTime"
+    )
+    return data if isinstance(data, dict) else {"data": data}
+
+
+def source_health(projects: pd.DataFrame) -> pd.DataFrame:
+    if projects.empty:
+        return pd.DataFrame()
+    return (
+        projects.groupby(["source", "source_freshness"], as_index=False)
+        .agg(
+            projects=("project_name", "count"),
+            priced=("has_price", "sum"),
+            cities=("city", "nunique"),
+            districts=("district", "nunique"),
+            cached_from=("cached_snapshot_utc", "max"),
+            error=("source_error", "first"),
+        )
+        .sort_values(["source_freshness", "projects"], ascending=[True, False])
+    )
+
+
+def render_admin_home(projects: pd.DataFrame, rooms: pd.DataFrame, db_meta: dict[str, Any]) -> None:
+    st.markdown("### Admin boshqaruv paneli")
+    pg_info = postgres_summary()
+    sched = scheduler_info()
+    bad_locations = int((~projects["location_valid"].fillna(False)).sum()) if "location_valid" in projects else 0
+    cached_projects = int(projects["source_freshness"].eq("cached").sum()) if "source_freshness" in projects else 0
+
+    cols = st.columns(5)
+    with cols[0]:
+        metric_card("Latest snapshot", snapshot_label(projects), "Asia/Tashkent")
+    with cols[1]:
+        metric_card("Projects", fmt_int(len(projects)), f"{fmt_int(len(rooms))} xona rows")
+    with cols[2]:
+        metric_card("PostgreSQL", "OK" if pg_info.get("connected") else "Xato", pg_info.get("dsn", ""))
+    with cols[3]:
+        metric_card("Cached source rows", fmt_int(cached_projects), "live bo'lmagan manbalar")
+    with cols[4]:
+        metric_card("Bad locations", fmt_int(bad_locations), "0 bo'lishi kerak")
+
+    st.markdown("### Tez amallar")
+    action_cols = st.columns([1, 1, 2])
+    with action_cols[0]:
+        if st.button("Scraperni hozir ishga tushirish", type="primary", use_container_width=True):
+            python = str(PYTHON_EXE) if PYTHON_EXE.exists() else "python"
+            with st.spinner("Scraper ishlayapti, biroz kuting..."):
+                code, output = run_command([python, "daily_update.py"], timeout=420)
+            st.cache_data.clear()
+            if code == 0:
+                st.success("Daily update tugadi.")
+            else:
+                st.error(f"Daily update xato bilan tugadi: {code}")
+            st.code(output[-12000:], language="text")
+    with action_cols[1]:
+        if st.button("Cache tozalash", use_container_width=True):
+            st.cache_data.clear()
+            st.success("Streamlit cache tozalandi.")
+    with action_cols[2]:
+        next_run = sched.get("NextRunTime")
+        if not next_run and isinstance(sched.get("data"), dict):
+            next_run = sched["data"].get("NextRunTime")
+        st.info(f"Scheduler keyingi ishga tushish vaqti: `{next_run or 'topilmadi'}`")
+
+    health = source_health(projects)
+    if not health.empty:
+        st.markdown("### Source health")
+        st.dataframe(
+            health,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "source": "Manba",
+                "source_freshness": "Holat",
+                "projects": "Loyiha",
+                "priced": "Narxi bor",
+                "cities": "Hudud",
+                "districts": "Tuman",
+                "cached_from": "Cached snapshot",
+                "error": "Xato",
+            },
+        )
+
+
+def render_source_admin(projects: pd.DataFrame) -> None:
+    st.markdown("### Manbalar monitoringi")
+    health = source_health(projects)
+    if health.empty:
+        st.info("Manba statistikasi yo'q.")
         return
+    left, right = st.columns([1.2, 1])
+    with left:
+        fig = px.bar(
+            health,
+            x="projects",
+            y="source",
+            color="source_freshness",
+            orientation="h",
+            title="Manbalar bo'yicha live/cached qatorlar",
+            labels={"projects": "Loyiha", "source": "", "source_freshness": "Holat"},
+            color_discrete_map={"live": "#0f766e", "cached": "#be123c"},
+        )
+        st.plotly_chart(polish(fig, 420), width="stretch")
+    with right:
+        cached = health[health["source_freshness"].eq("cached")]
+        if cached.empty:
+            st.success("Barcha manbalar live holatda.")
+        else:
+            st.warning("Ba'zi manbalar cached fallback bilan turibdi.")
+            st.dataframe(cached[["source", "projects", "cached_from", "error"]], width="stretch", hide_index=True)
 
-    tabs = st.tabs(["Umumiy", "Shaharlar", "Tumanlar", "Xonalar", "Xarita", "Loyihalar", "Data quality", "Database"])
+
+def render_scheduler_admin() -> None:
+    st.markdown("### Scheduler va loglar")
+    sched = scheduler_info()
+    cols = st.columns(3)
+    with cols[0]:
+        metric_card("Last run", str(sched.get("LastRunTime", "n/a")), "Windows Task Scheduler")
+    with cols[1]:
+        metric_card("Last result", str(sched.get("LastTaskResult", "n/a")), "0 bo'lsa OK")
+    with cols[2]:
+        metric_card("Next run", str(sched.get("NextRunTime", "n/a")), "har kuni 10:00")
+
+    log_files = sorted(LOG_DIR.glob("daily_update_*.log"), key=lambda path: path.stat().st_mtime, reverse=True) if LOG_DIR.exists() else []
+    if not log_files:
+        st.info("Log fayllar hali yo'q.")
+        return
+    selected = st.selectbox("Log fayl", log_files, format_func=lambda path: path.name)
+    lines = selected.read_text(encoding="utf-8", errors="replace").splitlines()
+    st.code("\n".join(lines[-220:]), language="text")
+
+
+def render_user_app(projects: pd.DataFrame, rooms: pd.DataFrame) -> None:
+    render_header(projects)
+    tabs = st.tabs(["Umumiy", "Shaharlar", "Tumanlar", "Xonalar", "Xarita", "Loyihalar"])
     with tabs[0]:
         render_overview(projects, rooms)
     with tabs[1]:
@@ -1566,14 +1823,61 @@ def main() -> None:
         render_map(projects)
     with tabs[5]:
         render_projects(projects)
-    with tabs[6]:
+
+
+def render_admin_app(projects: pd.DataFrame, rooms: pd.DataFrame, db_meta: dict[str, Any]) -> None:
+    st.markdown(
+        """
+        <div class="hero-band">
+            <div class="eyebrow">Admin control room</div>
+            <h1>Database, scraper va data quality boshqaruvi</h1>
+            <div class="hero-text">
+                Bu panel PostgreSQL/SQLite holati, manbalar live yoki cached ekanini, scheduler loglarini
+                va location QA natijalarini nazorat qilish uchun.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    tabs = st.tabs(["Boshqaruv", "Manbalar", "Data quality", "Database", "Scheduler"])
+    with tabs[0]:
+        render_admin_home(projects, rooms, db_meta)
+    with tabs[1]:
+        render_source_admin(projects)
+    with tabs[2]:
         render_quality(projects)
-    with tabs[7]:
+    with tabs[3]:
         render_database()
+    with tabs[4]:
+        render_scheduler_admin()
+
+
+def main() -> None:
+    apply_theme()
+
+    if not render_login_page():
+        return
+
+    if not PROJECTS_CSV.exists() or not ROOMS_CSV.exists():
+        st.error("Avval `python scrape_prices.py` ni ishga tushiring.")
+        st.stop()
+
+    projects, rooms, db_meta = load_data()
+    role = st.session_state.get("role", "user")
+    render_shell(role, db_meta)
+
+    if projects.empty and rooms.empty:
+        st.warning("Data topilmadi. Avval scraper ishga tushiring.")
+        return
+
+    if role == "admin":
+        render_admin_app(projects, rooms, db_meta)
+    else:
+        render_user_app(projects, rooms)
 
     st.caption(
-        "Dashboard latest data'ni SQLite bazadagi latest_projects/latest_room_prices viewlaridan o'qiydi. "
-        "CSV fayllar fallback/export uchun saqlanadi."
+        "Dashboard latest data'ni PostgreSQL'dan o'qiydi; ulanish bo'lmasa SQLite/CSV fallback ishlaydi. "
+        "Admin panelda live/cached manbalar va QA nazorati bor."
     )
 
 

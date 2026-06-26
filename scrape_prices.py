@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -12,9 +13,10 @@ from urllib.parse import urljoin
 
 import pandas as pd
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 
-from database import save_snapshot
+from database import DB_PATH, save_snapshot
 from postgres_database import save_snapshot_postgres
 
 
@@ -31,6 +33,9 @@ HEADERS = {
     "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
     "Accept-Language": "uz,en;q=0.8,ru;q=0.7",
 }
+SSL_FALLBACK_HOSTS = {"yangiuylar.uz"}
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 @dataclass
@@ -100,21 +105,79 @@ def save_raw(name: str, data: Any) -> None:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def request_json(url: str, *, referer: str | None = None, params: dict[str, Any] | None = None) -> dict[str, Any]:
+def drop_history_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    return frame.drop(
+        columns=[col for col in ["snapshot_id", "snapshot_date"] if col in frame.columns],
+        errors="ignore",
+    )
+
+
+def load_cached_source(source: str, error: Exception) -> ScrapeResult | None:
+    if not DB_PATH.exists():
+        return None
+    with sqlite3.connect(DB_PATH) as conn:
+        snapshot = conn.execute(
+            """
+            SELECT p.snapshot_id, s.snapshot_utc
+            FROM projects_history p
+            LEFT JOIN snapshots s ON s.snapshot_id = p.snapshot_id
+            WHERE p.source = ?
+            ORDER BY COALESCE(s.snapshot_utc, p.snapshot_id) DESC
+            LIMIT 1
+            """,
+            (source,),
+        ).fetchone()
+        if snapshot is None:
+            return None
+        snapshot_id, cached_snapshot_utc = snapshot
+        projects = pd.read_sql_query(
+            "SELECT * FROM projects_history WHERE source = ? AND snapshot_id = ?",
+            conn,
+            params=(source, snapshot_id),
+        )
+        rooms = pd.read_sql_query(
+            "SELECT * FROM room_prices_history WHERE source = ? AND snapshot_id = ?",
+            conn,
+            params=(source, snapshot_id),
+        )
+    if projects.empty:
+        return None
+
+    error_text = str(error)[:500]
+    projects = drop_history_columns(projects)
+    rooms = drop_history_columns(rooms)
+    for frame in [projects, rooms]:
+        if frame.empty:
+            continue
+        frame["snapshot_utc"] = SNAPSHOT_UTC
+        frame["source_freshness"] = "cached"
+        frame["source_error"] = error_text
+        frame["cached_snapshot_utc"] = cached_snapshot_utc
+    return ScrapeResult(projects.to_dict("records"), rooms.to_dict("records"))
+
+
+def request_get(url: str, *, referer: str | None = None, params: dict[str, Any] | None = None) -> requests.Response:
     headers = dict(HEADERS)
     if referer:
         headers["Referer"] = referer
-    response = requests.get(url, headers=headers, params=params, timeout=45)
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=45)
+    except requests.exceptions.SSLError:
+        if not any(host in url for host in SSL_FALLBACK_HOSTS):
+            raise
+        print(f"WARNING: SSL verification failed for {url}; retrying with verify=False")
+        response = requests.get(url, headers=headers, params=params, timeout=45, verify=False)
     response.raise_for_status()
+    return response
+
+
+def request_json(url: str, *, referer: str | None = None, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    response = request_get(url, referer=referer, params=params)
     return response.json()
 
 
 def request_text(url: str, *, referer: str | None = None) -> str:
-    headers = dict(HEADERS)
-    if referer:
-        headers["Referer"] = referer
-    response = requests.get(url, headers=headers, timeout=45)
-    response.raise_for_status()
+    response = request_get(url, referer=referer)
     return response.text
 
 
@@ -1060,6 +1123,14 @@ def normalize_and_save(results: list[ScrapeResult]) -> tuple[pd.DataFrame, pd.Da
     }
 
     if not projects.empty:
+        if "source_freshness" not in projects.columns:
+            projects["source_freshness"] = "live"
+        else:
+            projects["source_freshness"] = projects["source_freshness"].fillna("live")
+        if "source_error" not in projects.columns:
+            projects["source_error"] = None
+        if "cached_snapshot_utc" not in projects.columns:
+            projects["cached_snapshot_utc"] = None
         projects, project_location_issues = clean_location_frame(projects)
         location_summary["project_location_issues"] = project_location_issues
         before_filter = len(projects)
@@ -1069,6 +1140,14 @@ def normalize_and_save(results: list[ScrapeResult]) -> tuple[pd.DataFrame, pd.Da
         projects = projects.drop_duplicates(subset=["source", "source_id"], keep="first")
         projects = projects.sort_values(["source", "city", "district", "project_name"], na_position="last")
     if not room_prices.empty:
+        if "source_freshness" not in room_prices.columns:
+            room_prices["source_freshness"] = "live"
+        else:
+            room_prices["source_freshness"] = room_prices["source_freshness"].fillna("live")
+        if "source_error" not in room_prices.columns:
+            room_prices["source_error"] = None
+        if "cached_snapshot_utc" not in room_prices.columns:
+            room_prices["cached_snapshot_utc"] = None
         room_prices, room_location_issues = clean_location_frame(room_prices)
         location_summary["room_location_issues"] = room_location_issues
         room_prices = sanitize_room_prices(room_prices)
@@ -1094,6 +1173,7 @@ def normalize_and_save(results: list[ScrapeResult]) -> tuple[pd.DataFrame, pd.Da
         "room_price_rows_total": int(len(room_prices)),
         "projects_by_source": projects["source"].value_counts(dropna=False).to_dict() if not projects.empty else {},
         "room_rows_by_source": room_prices["source"].value_counts(dropna=False).to_dict() if not room_prices.empty else {},
+        "projects_by_freshness": projects["source_freshness"].value_counts(dropna=False).to_dict() if not projects.empty and "source_freshness" in projects else {},
         "projects_with_price": int(projects["price_available"].fillna(False).sum()) if not projects.empty else 0,
         "location_quality": location_summary,
     }
@@ -1121,6 +1201,12 @@ def main() -> None:
             results.append(fetcher())
         except Exception as exc:
             print(f"WARNING: {name} failed: {exc}")
+            cached = load_cached_source(name, exc)
+            if cached is not None:
+                print(f"Using cached {name} rows from the latest successful database snapshot.")
+                results.append(cached)
+            else:
+                print(f"WARNING: no cached {name} rows found.")
     projects, room_prices = normalize_and_save(results)
     print(f"Saved {len(projects)} projects and {len(room_prices)} room-level rows.")
     print(f"Output: {PROCESSED_DIR}")

@@ -19,6 +19,24 @@ python daily_update.py
 streamlit run dashboard.py
 ```
 
+## Login
+
+Dashboard kirishda rol tanlaydi:
+
+```text
+User:  user / user123
+Admin: admin / admin123
+```
+
+Parollarni lokal `.env` orqali almashtirish kerak:
+
+```text
+APP_ADMIN_USERNAME=admin
+APP_ADMIN_PASSWORD=...
+APP_USER_USERNAME=user
+APP_USER_PASSWORD=...
+```
+
 ## Chiqadigan fayllar
 
 - `data/processed/projects.csv` - turar-joy komplekslari bo'yicha normalizatsiya qilingan jadval.
@@ -82,7 +100,9 @@ Password: .env ichidagi POSTGRES_APP_PASSWORD
 
 PostgreSQL sozlangan bo'lsa, scraper snapshotni SQLite bilan birga PostgreSQL'ga ham yozadi. Dashboard esa birinchi PostgreSQL'dan o'qiydi, ulanish bo'lmasa SQLite fallback ishlaydi.
 
-Dashboard ichidagi `Database` tabda `snapshots`, `latest_projects`, `latest_room_prices`, `projects_history` va `room_prices_history` jadvallarini ko'rish hamda CSV qilib yuklab olish mumkin.
+Admin paneldagi `Database` tabda `snapshots`, `latest_projects`, `latest_room_prices`, `projects_history` va `room_prices_history` jadvallarini ko'rish hamda CSV qilib yuklab olish mumkin.
+
+Manba vaqtincha yiqilsa, scraper shu manbaning oxirgi yaxshi snapshotini `source_freshness=cached` qilib olib keladi. Admin paneldagi `Manbalar` sahifasida qaysi source live yoki cached ekanini ko'rish mumkin.
 
 Location QA qoidasi: city/district jufti valid ro'yxatdan o'tmasa yoki mahalla/TJM/aholi punkti kabi ishonchsiz lokatsiya kelsa, u loyiha dashboard va bazadagi latest snapshotdan chiqariladi. `Data quality` sahifasida nechta anomaly chiqarilgani ko'rinadi.
 
@@ -92,9 +112,11 @@ Location QA qoidasi: city/district jufti valid ro'yxatdan o'tmasa yoki mahalla/T
 .\scripts\install_daily_task.ps1
 ```
 
-Task nomi: `Narxlar Statistikasi Daily Update`. Loglar `data/logs/` ichida saqlanadi. Task data o'zgarsa `data/housing_prices.sqlite` va `data/processed/` fayllarini commit qilib GitHubga push ham qiladi.
+Task nomi: `Narxlar Statistikasi Daily Update`. Loglar `data/logs/` ichida saqlanadi. Task data o'zgarsa `data/housing_prices.sqlite` va `data/processed/` fayllarini commit qilib GitHubga push ham qiladi. Task ish boshlashdan oldin Python dependencylarni tekshiradi va yetishmasa `requirements.txt`dan qayta o'rnatadi.
 
 ## Dashboard bo'limlari
+
+User bo'limlari:
 
 - `Umumiy` - KPI, eng qimmat/arzon hududlar, tuman reytingi va xarita.
 - `Shaharlar` - shahar/viloyat bo'yicha median m2 narx va volume.
@@ -102,8 +124,14 @@ Task nomi: `Narxlar Statistikasi Daily Update`. Loglar `data/logs/` ichida saqla
 - `Xonalar` - xona soni bo'yicha ticket size, maydon va m2 dispersiyasi.
 - `Xarita` - latitude/longitude bor loyihalarni xaritada ko'rish.
 - `Loyihalar` - loyiha-level jadval, sort, search va CSV export.
-- `Data quality` - manba coverage, missing fields va caveatlar.
-- `Database` - SQLite snapshotlar, latest viewlar va jadval preview.
+
+Admin bo'limlari:
+
+- `Boshqaruv` - PostgreSQL holati, latest snapshot, cached rows, scraper run tugmasi.
+- `Manbalar` - source health, live/cached rows va source errorlari.
+- `Data quality` - coverage, missing fields, location QA va caveatlar.
+- `Database` - PostgreSQL/SQLite snapshotlar, latest viewlar va jadval preview.
+- `Scheduler` - Windows task holati va oxirgi loglar.
 
 ## Manbalar
 

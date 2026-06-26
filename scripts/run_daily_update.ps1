@@ -5,6 +5,8 @@ $BundledPython = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary
 $Python = if (Test-Path $BundledPython) { $BundledPython } else { "python" }
 $LogDir = Join-Path $ProjectRoot "data\logs"
 $LogFile = Join-Path $LogDir ("daily_update_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+$env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUNBUFFERED = "1"
 
 function Resolve-Git {
     $githubDesktopGit = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "GitHubDesktop\app-*\resources\app\git\cmd\git.exe") -ErrorAction SilentlyContinue |
@@ -20,6 +22,18 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Set-Location $ProjectRoot
 
 Write-Output ("Started daily update at {0}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) | Tee-Object -FilePath $LogFile
+Write-Output "Checking Python dependencies..." | Tee-Object -FilePath $LogFile -Append
+$DependencyCheck = "import importlib.util, sys; missing=[m for m in ('pandas','requests','bs4','lxml','plotly','streamlit','sqlalchemy','psycopg') if importlib.util.find_spec(m) is None]; print('Missing dependencies:', ', '.join(missing) if missing else 'none'); sys.exit(1 if missing else 0)"
+& $Python -c $DependencyCheck 2>&1 | Tee-Object -FilePath $LogFile -Append
+if ($LASTEXITCODE -ne 0) {
+    Write-Output "Installing Python dependencies from requirements.txt..." | Tee-Object -FilePath $LogFile -Append
+    & $Python -m pip install -r "requirements.txt" --no-input 2>&1 | Tee-Object -FilePath $LogFile -Append
+    if ($LASTEXITCODE -ne 0) {
+        $ExitCode = $LASTEXITCODE
+        Write-Output ("Finished daily update with exit code {0} at {1}" -f $ExitCode, (Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz")) | Tee-Object -FilePath $LogFile -Append
+        exit $ExitCode
+    }
+}
 & $Python "daily_update.py" 2>&1 | Tee-Object -FilePath $LogFile -Append
 $ExitCode = $LASTEXITCODE
 if ($ExitCode -eq 0) {
