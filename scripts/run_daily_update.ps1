@@ -18,6 +18,41 @@ function Resolve-Git {
     return "git"
 }
 
+function Invoke-NativeCapture {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $false)][string[]]$ArgumentList = @()
+    )
+
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $Output = & $FilePath @ArgumentList 2>&1
+        $ExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+
+    $Lines = @($Output | ForEach-Object { $_.ToString() })
+    return [PSCustomObject]@{
+        ExitCode = [int]$ExitCode
+        Lines = $Lines
+    }
+}
+
+function Invoke-NativeLogged {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $false)][string[]]$ArgumentList = @()
+    )
+
+    $Result = Invoke-NativeCapture -FilePath $FilePath -ArgumentList $ArgumentList
+    if ($Result.Lines.Count -gt 0) {
+        $Result.Lines | Tee-Object -FilePath $LogFile -Append | Out-Host
+    }
+    return $Result.ExitCode
+}
+
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Set-Location $ProjectRoot
 
@@ -38,38 +73,35 @@ if ($LASTEXITCODE -ne 0) {
 $ExitCode = $LASTEXITCODE
 if ($ExitCode -eq 0) {
     $Git = Resolve-Git
-    $Changes = & $Git status --porcelain data/housing_prices.sqlite data/processed/projects.csv data/processed/room_prices.csv data/processed/summary.json 2>&1
-    $GitStatusCode = $LASTEXITCODE
-    if ($GitStatusCode -eq 0 -and $Changes) {
+    $TrackedDataFiles = @("data/housing_prices.sqlite", "data/processed/projects.csv", "data/processed/room_prices.csv", "data/processed/summary.json")
+    $StatusResult = Invoke-NativeCapture -FilePath $Git -ArgumentList (@("status", "--porcelain", "--") + $TrackedDataFiles)
+    $Changes = @($StatusResult.Lines | Where-Object { $_ })
+    if ($StatusResult.ExitCode -eq 0 -and $Changes.Count -gt 0) {
         Write-Output "Committing updated database snapshot to GitHub..." | Tee-Object -FilePath $LogFile -Append
-        $AddOutput = & $Git add data/housing_prices.sqlite data/processed/projects.csv data/processed/room_prices.csv data/processed/summary.json 2>&1
-        $AddCode = $LASTEXITCODE
-        $AddOutput | Tee-Object -FilePath $LogFile -Append
+        $AddCode = Invoke-NativeLogged -FilePath $Git -ArgumentList (@("add", "--") + $TrackedDataFiles)
         if ($AddCode -ne 0) {
             $ExitCode = $AddCode
         } else {
-            $CommitOutput = & $Git commit -m ("Daily housing price snapshot {0}" -f (Get-Date -Format "yyyy-MM-dd")) 2>&1
-            $CommitCode = $LASTEXITCODE
-            $CommitOutput | Tee-Object -FilePath $LogFile -Append
+            $CommitCode = Invoke-NativeLogged -FilePath $Git -ArgumentList @("commit", "-m", ("Daily housing price snapshot {0}" -f (Get-Date -Format "yyyy-MM-dd")))
             if ($CommitCode -eq 0) {
-                $PushOutput = & $Git push 2>&1
-                $PushCode = $LASTEXITCODE
-                $PushOutput | Tee-Object -FilePath $LogFile -Append
+                $PushCode = Invoke-NativeLogged -FilePath $Git -ArgumentList @("push")
                 $ExitCode = $PushCode
             } else {
                 $ExitCode = $CommitCode
             }
         }
-    } elseif ($GitStatusCode -ne 0) {
-        $Changes | Tee-Object -FilePath $LogFile -Append
-        $ExitCode = $GitStatusCode
+    } elseif ($StatusResult.ExitCode -ne 0) {
+        $StatusResult.Lines | Tee-Object -FilePath $LogFile -Append
+        $ExitCode = $StatusResult.ExitCode
     } else {
         Write-Output "No tracked data changes to commit." | Tee-Object -FilePath $LogFile -Append
-        $PushOutput = & $Git push 2>&1
-        $PushCode = $LASTEXITCODE
-        $PushOutput | Tee-Object -FilePath $LogFile -Append
-        if ($PushCode -ne 0 -and $PushOutput -notmatch "Everything up-to-date") {
-            $ExitCode = $PushCode
+        $PushResult = Invoke-NativeCapture -FilePath $Git -ArgumentList @("push")
+        if ($PushResult.Lines.Count -gt 0) {
+            $PushResult.Lines | Tee-Object -FilePath $LogFile -Append
+        }
+        $PushText = $PushResult.Lines -join "`n"
+        if ($PushResult.ExitCode -ne 0 -and $PushText -notmatch "Everything up-to-date") {
+            $ExitCode = $PushResult.ExitCode
         } else {
             $ExitCode = 0
         }
