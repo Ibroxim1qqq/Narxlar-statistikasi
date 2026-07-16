@@ -1,47 +1,47 @@
 {
-  "snapshot_utc": "2026-07-15T05:00:06+00:00",
-  "projects_total": 1030,
-  "room_price_rows_total": 1793,
+  "snapshot_utc": "2026-07-16T05:01:25+00:00",
+  "projects_total": 1031,
+  "room_price_rows_total": 1831,
   "projects_by_source": {
-    "salomuy": 540,
+    "salomuy": 542,
     "domtut": 296,
     "yangiuylar": 157,
-    "uysot": 37
+    "uysot": 36
   },
   "room_rows_by_source": {
-    "domtut": 703,
-    "salomuy": 583,
+    "domtut": 704,
+    "salomuy": 620,
     "yangiuylar": 401,
     "uysot": 106
   },
   "projects_by_freshness": {
-    "live": 1030
+    "live": 1031
   },
-  "projects_with_price": 687,
+  "projects_with_price": 696,
   "location_quality": {
-    "projects_before_location_filter": 1046,
-    "room_rows_before_location_filter": 1817,
+    "projects_before_location_filter": 1051,
+    "room_rows_before_location_filter": 1865,
     "project_location_issues": {
-      "ok": 1030,
-      "district_removed": 8,
+      "ok": 1033,
+      "district_removed": 10,
       "invalid_city": 6,
       "city_only": 2
     },
     "room_location_issues": {
-      "ok": 1793,
-      "district_removed": 18,
+      "ok": 1837,
+      "district_removed": 22,
       "invalid_city": 6
     },
-    "projects_dropped_invalid_location": 16,
-    "room_rows_dropped_invalid_location": 24
+    "projects_dropped_invalid_location": 18,
+    "room_rows_dropped_invalid_location": 28
   },
   "database_path": "C:\\Users\\Aslanbek\\Documents\\Yangi Uylar narxlari data\\data\\housing_prices.sqlite",
   "postgres": {
     "enabled": true,
     "dsn": "postgresql+psycopg://narxlar_app:%2A%2A%2A@localhost:5432/narxlar_statistikasi",
-    "snapshot_id": "2026-07-15",
-    "snapshot_date": "2026-07-15",
-    "projects": 1030,
-    "room_rows": 1793
+    "snapshot_id": "2026-07-16",
+    "snapshot_date": "2026-07-16",
+    "projects": 1031,
+    "room_rows": 1831
   }
 }
