@@ -16,8 +16,10 @@ import streamlit as st
 
 from database import DB_PATH, database_summary, load_latest_snapshot, quote_identifier
 from postgres_database import (
+    get_engine,
     load_latest_snapshot_postgres,
     load_local_env,
+    pg_text,
     postgres_enabled,
     postgres_summary,
     postgres_table_preview,
@@ -257,6 +259,80 @@ def load_summary() -> dict[str, Any]:
         return json.loads(SUMMARY_JSON.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+@st.cache_data(ttl=600)
+def load_project_price_history() -> tuple[pd.DataFrame, str]:
+    query = """
+        SELECT
+            snapshot_date,
+            snapshot_utc,
+            source,
+            source_id,
+            project_name,
+            city,
+            district,
+            price_per_sqm_min_uzs,
+            source_freshness,
+            location_valid
+        FROM projects_history
+        WHERE price_per_sqm_min_uzs IS NOT NULL
+    """
+
+    history = pd.DataFrame()
+    storage = "SQLite"
+    if postgres_enabled():
+        try:
+            engine = get_engine()
+            with engine.begin() as conn:
+                history = pd.read_sql_query(pg_text(query), conn)
+            storage = "PostgreSQL"
+        except Exception:
+            history = pd.DataFrame()
+
+    if history.empty and DB_PATH.exists():
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                history = pd.read_sql_query(query, conn)
+            storage = "SQLite"
+        except Exception:
+            history = pd.DataFrame()
+
+    if history.empty:
+        return history, storage
+
+    history["price_per_sqm_min_uzs"] = pd.to_numeric(history["price_per_sqm_min_uzs"], errors="coerce")
+    history = history.dropna(subset=["price_per_sqm_min_uzs"]).copy()
+    history["source"] = history["source"].fillna("unknown").astype(str).str.title()
+    history["source_freshness"] = history.get("source_freshness", "live")
+    history["source_freshness"] = history["source_freshness"].fillna("live").astype(str).str.lower()
+    history["city"] = history["city"].replace(CITY_RENAMES)
+    history["district"] = history["district"].replace(DISTRICT_RENAMES)
+
+    snapshot_day = pd.to_datetime(history["snapshot_date"], errors="coerce")
+    fallback_day = (
+        pd.to_datetime(history["snapshot_utc"], utc=True, errors="coerce")
+        .dt.tz_convert("Asia/Tashkent")
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
+    history["snapshot_day"] = snapshot_day.fillna(fallback_day)
+    history = history.dropna(subset=["snapshot_day"]).copy()
+
+    if "location_valid" in history:
+        if history["location_valid"].dtype == object:
+            valid_locations = (
+                history["location_valid"]
+                .fillna(True)
+                .astype(str)
+                .str.lower()
+                .isin(["1", "true", "yes", "y"])
+            )
+        else:
+            valid_locations = history["location_valid"].fillna(True).astype(bool)
+        history = history[valid_locations].copy()
+
+    return history, storage
 
 
 def clean_loaded_data(
@@ -709,6 +785,129 @@ def overview_cards(projects: pd.DataFrame, rooms: pd.DataFrame, quality_scope: p
         )
 
 
+def render_m2_history_trend(projects: pd.DataFrame) -> None:
+    st.markdown("#### m2 narx dinamikasi")
+    history, storage = load_project_price_history()
+    if history.empty:
+        st.info("Tarixiy m2 trend uchun `projects_history` jadvalida data topilmadi.")
+        return
+
+    scoped = history.copy()
+    active_sources = sorted(projects["source"].dropna().unique())
+    active_cities = sorted(projects["city"].dropna().unique())
+    if active_sources:
+        scoped = scoped[scoped["source"].isin(active_sources)]
+    if active_cities:
+        scoped = scoped[scoped["city"].isin(active_cities)]
+
+    if scoped.empty:
+        st.info("Joriy filtrlar bo'yicha tarixiy m2 data yo'q.")
+        return
+
+    cached_available = bool(scoped["source_freshness"].eq("cached").any())
+    min_day = scoped["snapshot_day"].min().date()
+    max_day = scoped["snapshot_day"].max().date()
+
+    control_cols = st.columns([1.2, 1, 1])
+    with control_cols[0]:
+        selected_range = st.date_input(
+            "Davr oralig'i",
+            value=(min_day, max_day),
+            min_value=min_day,
+            max_value=max_day,
+            key="overview_m2_history_range",
+        )
+    with control_cols[1]:
+        line_mode = st.selectbox(
+            "Ko'rsatkich",
+            ["Median va o'rtacha", "Faqat median", "Faqat o'rtacha"],
+            key="overview_m2_history_metric",
+        )
+    with control_cols[2]:
+        include_cached = st.checkbox(
+            "Cached fallbackni qo'shish",
+            value=True,
+            disabled=not cached_available,
+            key="overview_m2_history_cached",
+        )
+
+    if isinstance(selected_range, (list, tuple)) and len(selected_range) == 2:
+        start_day, end_day = selected_range
+    else:
+        start_day = end_day = selected_range
+
+    scoped = scoped[
+        scoped["snapshot_day"].dt.date.between(start_day, end_day, inclusive="both")
+    ].copy()
+    if not include_cached:
+        scoped = scoped[~scoped["source_freshness"].eq("cached")].copy()
+
+    trend = (
+        scoped.groupby("snapshot_day", as_index=False)
+        .agg(
+            median_m2_uzs=("price_per_sqm_min_uzs", "median"),
+            avg_m2_uzs=("price_per_sqm_min_uzs", "mean"),
+            projects=("project_name", "count"),
+            sources=("source", "nunique"),
+        )
+        .sort_values("snapshot_day")
+    )
+
+    if len(trend) < 2:
+        st.info("Line graph uchun tanlangan davrda kamida 2 ta snapshot kerak.")
+        return
+
+    metric_options = {
+        "median_m2_uzs": "Median m2",
+        "avg_m2_uzs": "O'rtacha m2",
+    }
+    if line_mode == "Faqat median":
+        value_vars = ["median_m2_uzs"]
+    elif line_mode == "Faqat o'rtacha":
+        value_vars = ["avg_m2_uzs"]
+    else:
+        value_vars = ["median_m2_uzs", "avg_m2_uzs"]
+
+    first_median = trend["median_m2_uzs"].dropna().iloc[0] if trend["median_m2_uzs"].notna().any() else float("nan")
+    last_median = trend["median_m2_uzs"].dropna().iloc[-1] if trend["median_m2_uzs"].notna().any() else float("nan")
+    change = (last_median - first_median) / first_median if first_median and not pd.isna(first_median) else float("nan")
+
+    summary_cols = st.columns(4)
+    with summary_cols[0]:
+        metric_card("Davr boshi median", fmt_money(first_median), str(start_day))
+    with summary_cols[1]:
+        metric_card("Davr oxiri median", fmt_money(last_median), str(end_day))
+    with summary_cols[2]:
+        metric_card("Median o'zgarish", fmt_pct(change), "tanlangan davr")
+    with summary_cols[3]:
+        metric_card("Trend snapshot", fmt_int(trend["snapshot_day"].nunique()), f"{storage} history")
+
+    trend_long = trend.melt(
+        id_vars=["snapshot_day", "projects", "sources"],
+        value_vars=value_vars,
+        var_name="metric",
+        value_name="m2_uzs",
+    )
+    trend_long["metric"] = trend_long["metric"].map(metric_options)
+
+    fig = px.line(
+        trend_long,
+        x="snapshot_day",
+        y="m2_uzs",
+        color="metric",
+        markers=True,
+        hover_data={"projects": True, "sources": True, "snapshot_day": "|%Y-%m-%d", "m2_uzs": ":,.0f"},
+        labels={"snapshot_day": "Sana", "m2_uzs": "m2 narx, UZS", "metric": ""},
+        title="Tanlangan davrda m2 narx trendi",
+    )
+    fig.update_yaxes(tickformat=",.0f")
+    st.plotly_chart(polish(fig, 420), width="stretch")
+    st.caption(
+        f"Trend {fmt_int(len(scoped))} ta tarixiy loyiha qatori asosida hisoblandi. "
+        "Filtrlar home pagedagi manba va shahar tanlovlariga moslangan."
+    )
+
+
 def city_bar(stats: pd.DataFrame, *, title: str, ascending: bool, height: int = 420) -> go.Figure:
     chart = stats.sort_values("median_sqm_uzs", ascending=ascending).head(10)
     chart = chart.sort_values("median_sqm_uzs")
@@ -802,6 +1001,8 @@ def render_overview(projects: pd.DataFrame, rooms: pd.DataFrame) -> None:
         return
 
     overview_cards(filtered_projects, filtered_rooms, quality_scope)
+    st.write("")
+    render_m2_history_trend(filtered_projects)
     st.write("")
 
     cities = city_stats(filtered_projects)
