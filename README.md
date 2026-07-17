@@ -4,6 +4,24 @@ Bu loyiha hozirgi bozor snapshotini yig'adi va dashboardga chiqaradi.
 
 [Renderga deploy qilish](https://dashboard.render.com/blueprint/new?repo=https%3A%2F%2Fgithub.com%2FIbroxim1qqq%2FNarxlar-statistikasi)
 
+## Production deploy
+
+Render Blueprint `render.yaml` orqali sozlangan:
+
+- Web service: `narxlar-statistikasi`
+- Runtime: Python `3.12.11`
+- Start command: `streamlit run dashboard.py --server.address 0.0.0.0 --server.port $PORT --server.headless true`
+- Health check: `/_stcore/health`
+- Auto deploy: `main` branchga push bo'lsa Render qayta deploy qiladi
+
+Prod user login default:
+
+```text
+User: user / user123
+```
+
+Admin parol prodga deploy paytida Render tomonidan avtomatik generatsiya qilinadi (`APP_ADMIN_PASSWORD`). Uni Render Dashboard -> service -> Environment bo'limidan ko'rish/almashtirish mumkin. Secret qiymatlarni repo ichiga yozmang.
+
 ## Ishga tushirish
 
 ```powershell

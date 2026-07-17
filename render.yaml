@@ -1,8 +1,22 @@
 services:
   - type: web
     name: narxlar-statistikasi
-    env: python
+    runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run dashboard.py --server.address 0.0.0.0 --server.port $PORT
+    region: frankfurt
+    branch: main
+    buildCommand: python -m pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: streamlit run dashboard.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
+    healthCheckPath: /_stcore/health
     autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.11
+      - key: APP_ADMIN_USERNAME
+        value: admin
+      - key: APP_ADMIN_PASSWORD
+        generateValue: true
+      - key: APP_USER_USERNAME
+        value: user
+      - key: APP_USER_PASSWORD
+        value: user123
