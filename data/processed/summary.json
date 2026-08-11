@@ -1,5 +1,5 @@
 {
-  "snapshot_utc": "2026-08-10T05:00:06+00:00",
+  "snapshot_utc": "2026-08-11T05:00:07+00:00",
   "projects_total": 1044,
   "room_price_rows_total": 2029,
   "projects_by_source": {
@@ -39,8 +39,8 @@
   "postgres": {
     "enabled": true,
     "dsn": "postgresql+psycopg://narxlar_app:%2A%2A%2A@localhost:5432/narxlar_statistikasi",
-    "snapshot_id": "2026-08-10",
-    "snapshot_date": "2026-08-10",
+    "snapshot_id": "2026-08-11",
+    "snapshot_date": "2026-08-11",
     "projects": 1044,
     "room_rows": 2029
   }
