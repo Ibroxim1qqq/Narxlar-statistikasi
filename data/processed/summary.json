@@ -1,7 +1,7 @@
 {
-  "snapshot_utc": "2026-08-25T05:00:07+00:00",
+  "snapshot_utc": "2026-08-26T05:00:08+00:00",
   "projects_total": 1048,
-  "room_price_rows_total": 2040,
+  "room_price_rows_total": 2039,
   "projects_by_source": {
     "salomuy": 554,
     "domtut": 296,
@@ -9,7 +9,7 @@
     "uysot": 37
   },
   "room_rows_by_source": {
-    "salomuy": 824,
+    "salomuy": 823,
     "domtut": 702,
     "yangiuylar": 407,
     "uysot": 107
@@ -17,10 +17,10 @@
   "projects_by_freshness": {
     "live": 1048
   },
-  "projects_with_price": 791,
+  "projects_with_price": 794,
   "location_quality": {
     "projects_before_location_filter": 1069,
-    "room_rows_before_location_filter": 2077,
+    "room_rows_before_location_filter": 2076,
     "project_location_issues": {
       "ok": 1048,
       "district_removed": 11,
@@ -28,7 +28,7 @@
       "city_only": 2
     },
     "room_location_issues": {
-      "ok": 2040,
+      "ok": 2039,
       "district_removed": 28,
       "invalid_city": 9
     },
@@ -39,9 +39,9 @@
   "postgres": {
     "enabled": true,
     "dsn": "postgresql+psycopg://narxlar_app:%2A%2A%2A@localhost:5432/narxlar_statistikasi",
-    "snapshot_id": "2026-08-25",
-    "snapshot_date": "2026-08-25",
+    "snapshot_id": "2026-08-26",
+    "snapshot_date": "2026-08-26",
     "projects": 1048,
-    "room_rows": 2040
+    "room_rows": 2039
   }
 }
