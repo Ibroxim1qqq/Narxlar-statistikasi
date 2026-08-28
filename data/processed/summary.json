@@ -1,5 +1,5 @@
 {
-  "snapshot_utc": "2026-08-27T05:00:08+00:00",
+  "snapshot_utc": "2026-08-28T05:00:09+00:00",
   "projects_total": 1048,
   "room_price_rows_total": 2041,
   "projects_by_source": {
@@ -17,7 +17,7 @@
   "projects_by_freshness": {
     "live": 1048
   },
-  "projects_with_price": 794,
+  "projects_with_price": 797,
   "location_quality": {
     "projects_before_location_filter": 1069,
     "room_rows_before_location_filter": 2078,
@@ -39,8 +39,8 @@
   "postgres": {
     "enabled": true,
     "dsn": "postgresql+psycopg://narxlar_app:%2A%2A%2A@localhost:5432/narxlar_statistikasi",
-    "snapshot_id": "2026-08-27",
-    "snapshot_date": "2026-08-27",
+    "snapshot_id": "2026-08-28",
+    "snapshot_date": "2026-08-28",
     "projects": 1048,
     "room_rows": 2041
   }
