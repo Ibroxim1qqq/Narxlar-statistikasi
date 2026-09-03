@@ -1,5 +1,5 @@
 {
-  "snapshot_utc": "2026-09-02T05:00:07+00:00",
+  "snapshot_utc": "2026-09-03T05:00:07+00:00",
   "projects_total": 1048,
   "room_price_rows_total": 2038,
   "projects_by_source": {
@@ -17,30 +17,30 @@
   "projects_by_freshness": {
     "live": 1048
   },
-  "projects_with_price": 798,
+  "projects_with_price": 799,
   "location_quality": {
-    "projects_before_location_filter": 1069,
-    "room_rows_before_location_filter": 2075,
+    "projects_before_location_filter": 1070,
+    "room_rows_before_location_filter": 2078,
     "project_location_issues": {
       "ok": 1048,
-      "district_removed": 11,
+      "district_removed": 12,
       "invalid_city": 8,
       "city_only": 2
     },
     "room_location_issues": {
       "ok": 2038,
-      "district_removed": 28,
+      "district_removed": 31,
       "invalid_city": 9
     },
-    "projects_dropped_invalid_location": 21,
-    "room_rows_dropped_invalid_location": 37
+    "projects_dropped_invalid_location": 22,
+    "room_rows_dropped_invalid_location": 40
   },
   "database_path": "C:\\Users\\Aslanbek\\Documents\\Yangi Uylar narxlari data\\data\\housing_prices.sqlite",
   "postgres": {
     "enabled": true,
     "dsn": "postgresql+psycopg://narxlar_app:%2A%2A%2A@localhost:5432/narxlar_statistikasi",
-    "snapshot_id": "2026-09-02",
-    "snapshot_date": "2026-09-02",
+    "snapshot_id": "2026-09-03",
+    "snapshot_date": "2026-09-03",
     "projects": 1048,
     "room_rows": 2038
   }
