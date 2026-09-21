@@ -1,5 +1,5 @@
 {
-  "snapshot_utc": "2026-09-21T03:45:26+00:00",
+  "snapshot_utc": "2026-09-21T05:00:05+00:00",
   "projects_total": 1052,
   "room_price_rows_total": 2048,
   "projects_by_source": {
@@ -19,11 +19,11 @@
   },
   "projects_with_price": 794,
   "location_quality": {
-    "projects_before_location_filter": 1075,
+    "projects_before_location_filter": 1076,
     "room_rows_before_location_filter": 2091,
     "project_location_issues": {
       "ok": 1052,
-      "district_removed": 13,
+      "district_removed": 14,
       "invalid_city": 8,
       "city_only": 2
     },
@@ -32,7 +32,7 @@
       "district_removed": 34,
       "invalid_city": 9
     },
-    "projects_dropped_invalid_location": 23,
+    "projects_dropped_invalid_location": 24,
     "room_rows_dropped_invalid_location": 43
   },
   "database_path": "C:\\Users\\Aslanbek\\Documents\\Yangi Uylar narxlari data\\data\\housing_prices.sqlite",
