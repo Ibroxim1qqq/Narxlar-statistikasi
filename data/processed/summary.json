@@ -1,7 +1,7 @@
 {
-  "snapshot_utc": "2026-10-05T04:06:18+00:00",
+  "snapshot_utc": "2026-10-05T05:00:08+00:00",
   "projects_total": 1053,
-  "room_price_rows_total": 2046,
+  "room_price_rows_total": 2044,
   "projects_by_source": {
     "salomuy": 559,
     "domtut": 296,
@@ -10,17 +10,17 @@
   },
   "room_rows_by_source": {
     "salomuy": 833,
-    "domtut": 696,
+    "domtut": 694,
     "yangiuylar": 414,
     "uysot": 103
   },
   "projects_by_freshness": {
     "live": 1053
   },
-  "projects_with_price": 794,
+  "projects_with_price": 790,
   "location_quality": {
     "projects_before_location_filter": 1079,
-    "room_rows_before_location_filter": 2093,
+    "room_rows_before_location_filter": 2091,
     "project_location_issues": {
       "ok": 1053,
       "district_removed": 16,
@@ -28,7 +28,7 @@
       "city_only": 2
     },
     "room_location_issues": {
-      "ok": 2046,
+      "ok": 2044,
       "district_removed": 38,
       "invalid_city": 9
     },
@@ -42,6 +42,6 @@
     "snapshot_id": "2026-10-05",
     "snapshot_date": "2026-10-05",
     "projects": 1053,
-    "room_rows": 2046
+    "room_rows": 2044
   }
 }
