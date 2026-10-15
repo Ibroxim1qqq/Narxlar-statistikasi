@@ -1,5 +1,5 @@
 {
-  "snapshot_utc": "2026-10-14T05:00:10+00:00",
+  "snapshot_utc": "2026-10-15T05:00:09+00:00",
   "projects_total": 560,
   "room_price_rows_total": 1242,
   "projects_by_source": {
@@ -15,32 +15,33 @@
     "salomuy": 30
   },
   "projects_by_freshness": {
-    "live": 560
+    "live": 525,
+    "cached": 35
   },
   "projects_with_price": 382,
   "location_quality": {
-    "projects_before_location_filter": 1080,
-    "room_rows_before_location_filter": 2094,
+    "projects_before_location_filter": 1075,
+    "room_rows_before_location_filter": 2082,
     "project_location_issues": {
       "ok": 560,
-      "invalid_city": 484,
-      "district_removed": 34,
+      "invalid_city": 483,
+      "district_removed": 30,
       "city_only": 2
     },
     "room_location_issues": {
       "ok": 1242,
-      "invalid_city": 797,
-      "district_removed": 55
+      "invalid_city": 794,
+      "district_removed": 46
     },
-    "projects_dropped_invalid_location": 520,
-    "room_rows_dropped_invalid_location": 852
+    "projects_dropped_invalid_location": 515,
+    "room_rows_dropped_invalid_location": 840
   },
   "database_path": "C:\\Users\\Aslanbek\\Documents\\Yangi Uylar narxlari data\\data\\housing_prices.sqlite",
   "postgres": {
     "enabled": true,
     "dsn": "postgresql+psycopg://narxlar_app:%2A%2A%2A@localhost:5432/narxlar_statistikasi",
-    "snapshot_id": "2026-10-14",
-    "snapshot_date": "2026-10-14",
+    "snapshot_id": "2026-10-15",
+    "snapshot_date": "2026-10-15",
     "projects": 560,
     "room_rows": 1242
   }
